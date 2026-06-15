@@ -20,6 +20,7 @@ add_executable(inkshelf.app
     src/library.c
     src/download.c
     src/httpd.c
+    src/wifi_drop_ui.c
 )
 
 target_include_directories(inkshelf.app PRIVATE

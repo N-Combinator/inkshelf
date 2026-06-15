@@ -18,4 +18,9 @@ screen_t *screen_main_menu(void);
  * then browse/search/download. Implemented in opds_ui.c. */
 screen_t *screen_opds_catalog(void);
 
+/* WiFi Book Drop: starts the embedded HTTP upload server, shows the URL and
+ * live upload status. Stopping the server on Back. Implemented in
+ * wifi_drop_ui.c. */
+screen_t *screen_wifi_drop(void);
+
 #endif /* INKSHELF_SCREENS_H */

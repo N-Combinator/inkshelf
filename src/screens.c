@@ -13,52 +13,6 @@
 #include "screens.h"
 #include "ui.h"
 
-/* ---- placeholder "coming soon" screen ------------------------------ */
-
-typedef struct {
-    const char *message;
-} placeholder_state;
-
-static void placeholder_show(screen_t *self)
-{
-    placeholder_state *st = self->data;
-    int w = ScreenWidth();
-    int content_y = ui_header_height();
-    int content_h = ScreenHeight() - ui_header_height() - ui_footer_height();
-    const ui_fonts *f = ui_get_fonts();
-
-    ClearScreen();
-    ui_draw_header(self->title);
-
-    SetFont(f->item, DGRAY);
-    DrawTextRect(24, content_y, w - 48, content_h,
-                 st->message, ALIGN_CENTER | VALIGN_MIDDLE);
-
-    ui_draw_footer("Back to return");
-    ui_flush_full();
-}
-
-static int placeholder_key(screen_t *self, int key)
-{
-    (void)self;
-    if (ui_nav_classify(key) == UI_NAV_BACK) {
-        nav_pop();
-        return 1;
-    }
-    return 0;
-}
-
-static placeholder_state g_wifi_ph = {
-    "WiFi book drop\n\nComing in a later milestone."
-};
-
-static screen_t g_wifi_screen = {
-    .title = "WiFi Book Drop",
-    .data = &g_wifi_ph,
-    .on_show = placeholder_show,
-    .on_key = placeholder_key,
-};
-
 /* ---- main menu ----------------------------------------------------- */
 
 static const ui_list_item MENU_ITEMS[] = {
@@ -80,7 +34,7 @@ static void menu_activate(int idx)
         nav_push(screen_opds_catalog());
         break;
     case 1:
-        nav_push(&g_wifi_screen);
+        nav_push(screen_wifi_drop());
         break;
     default:
         break;

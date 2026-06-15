@@ -82,7 +82,38 @@ void InkViewMain(int (*h)(int, int, int))
     h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop results browse */
     h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop original browse */
     h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop catalog picker */
+    /* Exercise the WiFi Drop screen: enter, refresh (any key), then back. */
+    h(EVT_KEYPRESS, KEY_DOWN, 0);   /* main menu: select WiFi Book Drop */
+    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> WiFi Drop screen (starts stub server) */
+    h(EVT_KEYPRESS, KEY_NEXT, 0);   /* refresh (any non-Back key) */
+    h(EVT_KEYPRESS, KEY_BACK, 0);   /* -> back to main menu (stops stub server) */
     h(EVT_EXIT, 0, 0);
+}
+
+/* ---- httpd stubs (so the smoke test doesn't open a real socket) ----- */
+
+#include <stdio.h>
+#include "httpd.h"
+
+int httpd_start(int port, char *err, size_t errsz)
+{
+    (void)port; (void)err; (void)errsz;
+    return 0;
+}
+void httpd_stop(void) {}
+void httpd_status(httpd_status_t *out)
+{
+    if (!out) return;
+    *out = (httpd_status_t){
+        .running = 1, .port = 8080,
+        .ip = "192.168.0.1",
+        .uploads = 0,
+    };
+}
+int httpd_local_ipv4(char *out, size_t outsz)
+{
+    if (out && outsz) snprintf(out, outsz, "192.168.0.1");
+    return 0;
 }
 
 /* ---- download stubs (so the smoke test doesn't hit the network) ----- */
