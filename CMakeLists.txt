@@ -10,6 +10,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # "inkshelf.app" directly so the artifact is install-ready.
 add_executable(inkshelf.app
     src/main.c
+    src/app.c
+    src/ui.c
+    src/screens.c
 )
 
 target_include_directories(inkshelf.app PRIVATE
