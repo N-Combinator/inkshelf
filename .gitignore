@@ -1,0 +1,10 @@
+# Build output
+/build/
+*.o
+*.app
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
