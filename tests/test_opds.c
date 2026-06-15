@@ -148,6 +148,53 @@ static void test_xml_edge_cases(void)
     opds_feed_free(f);
 }
 
+static const char SEARCH_FEED[] =
+"<feed xmlns=\"http://www.w3.org/2005/Atom\">\n"
+"  <title>Root</title>\n"
+"  <link rel=\"search\" type=\"application/atom+xml\" href=\"/opds/search?q={searchTerms}\"/>\n"
+"  <link rel=\"next\" type=\"application/atom+xml\" href=\"/opds/page/2\"/>\n"
+"  <entry><title>Section</title>"
+"    <link rel=\"subsection\" href=\"/s\" type=\"application/atom+xml\"/></entry>\n"
+"</feed>\n";
+
+static void test_feed_links_and_search(void)
+{
+    printf("feed links + search:\n");
+    opds_feed *f = opds_parse(SEARCH_FEED, sizeof(SEARCH_FEED) - 1);
+    CHECK(f != NULL, "parses");
+    if (!f) return;
+
+    CHECK(f->link_count == 2, "two feed-level links captured");
+    CHECK(STREQ(opds_feed_search_href(f), "/opds/search?q={searchTerms}"),
+          "search href found");
+    CHECK(STREQ(opds_feed_link_href(f, "next"), "/opds/page/2"), "next href found");
+    CHECK(opds_feed_link_href(f, "previous") == NULL, "no previous link");
+    /* Entry link still works (regression on the links_add refactor). */
+    CHECK(f->entry_count == 1 && opds_entry_is_navigation(&f->entries[0]),
+          "entry-level link still parsed");
+
+    /* OpenSearch description doc -> prefer the atom+xml template. */
+    static const char OSD[] =
+        "<OpenSearchDescription xmlns=\"http://a9.com/-/spec/opensearch/1.1/\">"
+        "<Url type=\"text/html\" template=\"https://x/h?q={searchTerms}\"/>"
+        "<Url type=\"application/atom+xml\" template=\"https://x/opds?q={searchTerms}\"/>"
+        "</OpenSearchDescription>";
+    char *tmpl = opds_opensearch_template(OSD, sizeof(OSD) - 1);
+    CHECK(STREQ(tmpl, "https://x/opds?q={searchTerms}"), "opensearch desc -> atom template");
+    free(tmpl);
+    CHECK(opds_opensearch_template("<x/>", 4) == NULL, "no template -> NULL");
+
+    char *u = opds_apply_search_template("/opds/search?q={searchTerms}", "tolkien lord");
+    CHECK(STREQ(u, "/opds/search?q=tolkien%20lord"), "template subst + url-encode");
+    free(u);
+
+    u = opds_apply_search_template("/s?q={searchTerms}&i={startIndex?}", "a&b");
+    CHECK(STREQ(u, "/s?q=a%26b&i="), "ampersand encoded, extra macro dropped");
+    free(u);
+
+    opds_feed_free(f);
+}
+
 static void test_malformed(void)
 {
     printf("robustness:\n");
@@ -166,6 +213,7 @@ int main(void)
     test_nav_feed();
     test_acq_feed();
     test_url_resolution();
+    test_feed_links_and_search();
     test_xml_edge_cases();
     test_malformed();
 

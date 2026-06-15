@@ -30,6 +30,7 @@ void nav_pop(void)
 
     screen_t *top = g_stack[--g_depth];
     if (top->on_leave) top->on_leave(top);
+    if (top->on_destroy) top->on_destroy(top);
 
     screen_t *cur = nav_current();
     if (cur) {

@@ -15,6 +15,7 @@ add_executable(inkshelf.app
     src/screens.c
     src/xml.c
     src/opds.c
+    src/opds_ui.c
     src/http.c
 )
 

@@ -14,4 +14,8 @@
 /* Root screen: the main menu (OPDS Catalog / WiFi Book Drop). */
 screen_t *screen_main_menu(void);
 
+/* OPDS catalog entry point: pick a preset catalog or type a custom URL,
+ * then browse/search/download. Implemented in opds_ui.c. */
+screen_t *screen_opds_catalog(void);
+
 #endif /* INKSHELF_SCREENS_H */

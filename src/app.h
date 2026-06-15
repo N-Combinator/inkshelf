@@ -20,7 +20,8 @@ typedef struct screen {
 
     void (*on_enter)(struct screen *self);   /* became active (first push or re-shown after pop) */
     void (*on_show)(struct screen *self);    /* repaint request */
-    void (*on_leave)(struct screen *self);   /* about to be popped/hidden */
+    void (*on_leave)(struct screen *self);   /* hidden (child pushed) or about to be popped */
+    void (*on_destroy)(struct screen *self); /* removed from the stack for good — free resources */
 
     /* Return non-zero if the event was handled. */
     int (*on_key)(struct screen *self, int key);

@@ -10,6 +10,7 @@
 #include <stddef.h>
 
 #include "app.h"
+#include "screens.h"
 #include "ui.h"
 
 /* ---- placeholder "coming soon" screen ------------------------------ */
@@ -47,19 +48,10 @@ static int placeholder_key(screen_t *self, int key)
     return 0;
 }
 
-static placeholder_state g_opds_ph = {
-    "OPDS catalog browser\n\nComing in the next milestone."
-};
 static placeholder_state g_wifi_ph = {
     "WiFi book drop\n\nComing in a later milestone."
 };
 
-static screen_t g_opds_screen = {
-    .title = "OPDS Catalog",
-    .data = &g_opds_ph,
-    .on_show = placeholder_show,
-    .on_key = placeholder_key,
-};
 static screen_t g_wifi_screen = {
     .title = "WiFi Book Drop",
     .data = &g_wifi_ph,
@@ -85,7 +77,7 @@ static void menu_activate(int idx)
 {
     switch (idx) {
     case 0:
-        nav_push(&g_opds_screen);
+        nav_push(screen_opds_catalog());
         break;
     case 1:
         nav_push(&g_wifi_screen);

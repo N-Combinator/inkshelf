@@ -34,6 +34,8 @@ typedef struct {
     char *title;
     opds_entry *entries;
     int entry_count;
+    opds_link *links;        /* feed-level links (search, next, start, ...) */
+    int link_count;
 } opds_feed;
 
 /* Parse an OPDS/Atom document. Returns a heap feed (free with
@@ -61,6 +63,29 @@ const char *opds_entry_subfeed_href(const opds_entry *entry);
 /* Best download link for a book entry, preferring epub then fb2 then any
  * acquisition link. Returns NULL if the entry has no acquisition link. */
 const opds_link *opds_entry_best_acquisition(const opds_entry *entry);
+
+/* ---- feed-level links & search ------------------------------------- */
+
+/* href of the first feed-level link whose rel contains `rel_substr`
+ * (case-insensitive), or NULL. Use "next"/"previous"/"start" for paging. */
+const char *opds_feed_link_href(const opds_feed *feed, const char *rel_substr);
+
+/* href of the feed's search link (rel contains "search"), or NULL. This may
+ * be either a templated OPDS URL (contains "{searchTerms}") or an OpenSearch
+ * description document — the caller decides how to resolve it (see type). */
+const char *opds_feed_search_href(const opds_feed *feed);
+const char *opds_feed_search_type(const opds_feed *feed);
+
+/* Extract the best query template from an OpenSearch description document
+ * (the XML a rel="search" link may point at). Prefers a <Url> whose type is
+ * an Atom/OPDS feed and whose template contains "{searchTerms}". Returns a
+ * heap string (caller frees) or NULL if none found. */
+char *opds_opensearch_template(const char *xml, unsigned long len);
+
+/* Substitute the query into an OpenSearch "{searchTerms}" template,
+ * URL-encoding the query. Other {...} macros are dropped. Returns a heap
+ * string (caller frees) or NULL on OOM. */
+char *opds_apply_search_template(const char *tmpl, const char *query);
 
 /* ---- URL resolution ------------------------------------------------ */
 
