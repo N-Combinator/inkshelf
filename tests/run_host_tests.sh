@@ -105,6 +105,16 @@ echo "== unit tests (xml + opds) =="
 "${OUT}/test_opds"
 
 echo
+echo "== unit tests (httpd: multipart parser + filename safety) =="
+# httpd.c is socket/pthread code but the parser core runs over a memory reader,
+# so the unit test never opens a socket. -pthread satisfies the link.
+# shellcheck disable=SC2086
+"${CC}" ${WARN} ${SAN} -pthread -I"${ROOT}/src" \
+    "${ROOT}/src/httpd.c" "${ROOT}/src/library.c" "${ROOT}/tests/test_httpd.c" \
+    -o "${OUT}/test_httpd"
+"${OUT}/test_httpd"
+
+echo
 echo "== integration smoke (full app, stub InkView+curl) =="
 # All app sources except main.c's real InkView/curl come from the stubs.
 # download.c is excluded — host_stubs.c provides a stub download_book,

@@ -19,11 +19,17 @@ add_executable(inkshelf.app
     src/http.c
     src/library.c
     src/download.c
+    src/httpd.c
 )
 
 target_include_directories(inkshelf.app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+# The WiFi-drop upload server (httpd.c) runs its accept loop on a pthread.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+target_link_libraries(inkshelf.app PRIVATE Threads::Threads)
 
 # libcurl provides HTTP for OPDS fetches and book downloads. Shipped in the
 # PocketBook SDK toolchain; find it via the sysroot, fall back to -lcurl.
