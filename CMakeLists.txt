@@ -13,11 +13,29 @@ add_executable(inkshelf.app
     src/app.c
     src/ui.c
     src/screens.c
+    src/xml.c
+    src/opds.c
+    src/http.c
 )
 
 target_include_directories(inkshelf.app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+# libcurl provides HTTP for OPDS fetches and book downloads. Shipped in the
+# PocketBook SDK toolchain; find it via the sysroot, fall back to -lcurl.
+find_package(CURL QUIET)
+if(CURL_FOUND)
+    target_link_libraries(inkshelf.app PRIVATE CURL::libcurl)
+else()
+    find_library(CURL_LIB NAMES curl HINTS ${PB_SDK_ROOT}/lib ${PB_SYSROOT}/usr/lib)
+    if(CURL_LIB)
+        target_link_libraries(inkshelf.app PRIVATE ${CURL_LIB})
+    else()
+        message(WARNING "libcurl not found; linking with -lcurl")
+        target_link_libraries(inkshelf.app PRIVATE curl)
+    endif()
+endif()
 
 # InkView is the PocketBook UI/runtime library. When building inside the SDK
 # image it is found via the sysroot; allow an explicit hint otherwise.
