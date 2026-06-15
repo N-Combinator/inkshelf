@@ -20,6 +20,7 @@
 #include "inkview.h"
 
 #include "app.h"
+#include "download.h"
 #include "http.h"
 #include "opds.h"
 #include "screens.h"
@@ -393,17 +394,77 @@ static void book_show(screen_t *self)
     ui_flush_full();
 }
 
-static int book_key(screen_t *self, int key)
+/* Progress callback: repaints the progress bar on screen. */
+typedef struct { const char *title; } prog_ctx;
+
+static int book_progress_cb(int pct, void *ud)
+{
+    prog_ctx *ctx = ud;
+    int w = ScreenWidth();
+    int cy = ui_header_height();
+    int ch = ScreenHeight() - ui_header_height() - ui_footer_height();
+    const ui_fonts *f = ui_get_fonts();
+
+    ClearScreen();
+    ui_draw_header(ctx->title);
+
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Downloading... %d%%", pct);
+    SetFont(f->item, BLACK);
+    DrawTextRect(24, cy, w - 48, ch / 2, msg, ALIGN_CENTER | VALIGN_MIDDLE);
+
+    /* Progress bar. */
+    int bw = w - 96;
+    int bx = 48;
+    int by = cy + ch / 2 + 20;
+    int bh = 24;
+    DrawRect(bx, by, bw, bh, DGRAY);
+    int fill = bw * pct / 100;
+    if (fill > 0) FillArea(bx, by, fill, bh, BLACK);
+
+    ui_draw_footer("Please wait...");
+    PartialUpdate(0, 0, w, ScreenHeight());
+    return 0;
+}
+
+static void book_do_download(screen_t *self)
 {
     book_state *bk = self->data;
+    if (!bk->dl_url) {
+        Message(ICON_INFORMATION, "inkshelf",
+                "No downloadable file for this entry.", 2500);
+        return;
+    }
+
+    prog_ctx ctx = { .title = bk->title };
+    char out_path[DL_PATH_MAX];
+    char errbuf[DL_ERR_MAX];
+
+    int rc = download_book(bk->dl_url,
+                           bk->title,
+                           bk->dl_type,
+                           book_progress_cb, &ctx,
+                           out_path, errbuf);
+
+    if (rc != 0) {
+        char msg[DL_ERR_MAX + 32];
+        snprintf(msg, sizeof(msg), "Download failed:\n%s", errbuf);
+        Message(ICON_WARNING, "inkshelf", msg, 4000);
+    } else {
+        char msg[DL_PATH_MAX + 64];
+        snprintf(msg, sizeof(msg),
+                 "Saved to:\n%s\n\nBook will appear in Library after rescan.",
+                 out_path);
+        Message(ICON_INFORMATION, "inkshelf", msg, 5000);
+    }
+    book_show(self);   /* restore the detail screen */
+}
+
+static int book_key(screen_t *self, int key)
+{
     switch (ui_nav_classify(key)) {
     case UI_NAV_SELECT:
-        if (bk->dl_url)
-            Message(ICON_INFORMATION, "inkshelf",
-                    "Download arrives in milestone #5.", 2500);
-        else
-            Message(ICON_INFORMATION, "inkshelf",
-                    "No downloadable file for this entry.", 2500);
+        book_do_download(self);
         return 1;
     case UI_NAV_BACK:
         nav_pop();

@@ -60,6 +60,7 @@ void PartialUpdate(int x,int y,int w,int h);
 void CloseApp(void);
 void OpenKeyboard(const char *title, char *buf, int maxlen, int flags, iv_kbdhandler h);
 int Message(int icon, const char *title, const char *text, int timeout);
+void SendEvent(void *hproc, int type, int par1, int par2);
 void InkViewMain(int (*h)(int,int,int));
 #endif
 EOF
@@ -82,7 +83,11 @@ typedef enum { CURLE_OK = 0 } CURLcode;
 #define CURLOPT_NOSIGNAL 9
 #define CURLOPT_ERRORBUFFER 10
 #define CURLOPT_ACCEPT_ENCODING 11
+#define CURLOPT_PROGRESSFUNCTION 12
+#define CURLOPT_PROGRESSDATA 13
+#define CURLOPT_NOPROGRESS 14
 #define CURLINFO_RESPONSE_CODE 100
+typedef int (*curl_progress_callback)(void *, double, double, double, double);
 CURL *curl_easy_init(void);
 CURLcode curl_easy_setopt(CURL *, int, ...);
 CURLcode curl_easy_perform(CURL *);
@@ -102,9 +107,20 @@ echo "== unit tests (xml + opds) =="
 echo
 echo "== integration smoke (full app, stub InkView+curl) =="
 # All app sources except main.c's real InkView/curl come from the stubs.
+# download.c is excluded — host_stubs.c provides a stub download_book,
+# and http.c (which needs real curl) is replaced by the curl stubs in host_stubs.c.
 # shellcheck disable=SC2086
 "${CC}" ${WARN} ${SAN} -I"${ROOT}/src" -I"${INC}" \
-    "${ROOT}"/src/*.c "${ROOT}/tests/host_stubs.c" \
+    "${ROOT}/src/app.c" \
+    "${ROOT}/src/http.c" \
+    "${ROOT}/src/library.c" \
+    "${ROOT}/src/main.c" \
+    "${ROOT}/src/opds.c" \
+    "${ROOT}/src/opds_ui.c" \
+    "${ROOT}/src/screens.c" \
+    "${ROOT}/src/ui.c" \
+    "${ROOT}/src/xml.c" \
+    "${ROOT}/tests/host_stubs.c" \
     -o "${OUT}/app_smoke"
 "${OUT}/app_smoke"
 echo "integration smoke: OK (no leaks / UB reported)"

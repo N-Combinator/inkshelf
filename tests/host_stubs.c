@@ -58,23 +58,50 @@ void OpenKeyboard(const char *t, char *b, int m, int f, iv_kbdhandler h)
     if (h) h(b);
 }
 
+void SendEvent(void *hproc, int type, int par1, int par2)
+{
+    (void)hproc; (void)type; (void)par1; (void)par2;
+}
+
 static int (*g_handler)(int, int, int);
 
 void InkViewMain(int (*h)(int, int, int))
 {
     g_handler = h;
-    h(EVT_INIT, 0, 0);       /* main menu */
-    h(EVT_KEYPRESS, KEY_OK, 0);    /* -> OPDS catalog picker */
-    h(EVT_KEYPRESS, KEY_OK, 0);    /* -> browse preset feed */
-    h(EVT_KEYPRESS, KEY_MENU, 0);  /* -> search -> push results browse */
-    h(EVT_KEYPRESS, KEY_DOWN, 0);  /* move to the book entry */
-    h(EVT_KEYPRESS, KEY_OK, 0);    /* -> book detail */
-    h(EVT_KEYPRESS, KEY_BACK, 0);  /* pop book */
-    h(EVT_KEYPRESS, KEY_BACK, 0);  /* pop results browse */
-    h(EVT_KEYPRESS, KEY_BACK, 0);  /* pop original browse */
-    h(EVT_KEYPRESS, KEY_BACK, 0);  /* pop catalog picker */
+    h(EVT_INIT, 0, 0);              /* main menu */
+    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> OPDS catalog picker */
+    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> browse preset feed (Standard Ebooks) */
+    h(EVT_KEYPRESS, KEY_DOWN, 0);   /* select book entry */
+    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> book detail */
+    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> trigger download (stubbed) */
+    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop book detail */
+    h(EVT_KEYPRESS, KEY_MENU, 0);   /* search -> push results browse */
+    h(EVT_KEYPRESS, KEY_DOWN, 0);   /* move to book in results */
+    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> book detail in results */
+    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop results book */
+    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop results browse */
+    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop original browse */
+    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop catalog picker */
     h(EVT_EXIT, 0, 0);
 }
+
+/* ---- download stubs (so the smoke test doesn't hit the network) ----- */
+
+#include <stdio.h>
+#include "download.h"
+
+int download_book(const char *url, const char *title, const char *mime,
+                  dl_progress_cb cb, void *ud,
+                  char out_path[DL_PATH_MAX], char errbuf[DL_ERR_MAX])
+{
+    (void)url; (void)mime;
+    if (cb) { cb(50, ud); cb(100, ud); }
+    snprintf(out_path, DL_PATH_MAX, "/tmp/%s.epub", title ? title : "book");
+    errbuf[0] = '\0';
+    return 0;
+}
+
+int download_rescan_library(void) { return 0; }
 
 /* ---- libcurl stubs ------------------------------------------------- */
 

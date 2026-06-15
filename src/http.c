@@ -1,5 +1,9 @@
 /*
- * http.c — libcurl-backed HTTP GET (see http.h).
+ * http.c — libcurl-backed HTTP GET + simple file download (see http.h).
+ *
+ * For the richer progress-callback download used by the book-download screen
+ * see download.c; http_download_file is a simpler no-progress streaming
+ * variant for internal use.
  */
 
 #include <stdio.h>
@@ -13,6 +17,7 @@
 #define HTTP_UA       "inkshelf/0.1 (PocketBook)"
 #define HTTP_TIMEOUT  30L
 #define HTTP_MAX_BODY (32 * 1024 * 1024)   /* 32 MB cap for in-memory feeds */
+#define HTTP_MAX_FILE (512UL * 1024 * 1024) /* 512 MB cap for book downloads */
 
 typedef struct {
     char *data;
@@ -105,5 +110,78 @@ int http_get_mem(const char *url, char **out_buf, size_t *out_len,
     }
     *out_buf = m.data;
     *out_len = m.len;
+    return 0;
+}
+
+/* ---- streaming file download --------------------------------------- */
+
+typedef struct { FILE *fp; size_t written; } filebuf;
+
+static size_t file_write_cb(char *ptr, size_t size, size_t nmemb, void *ud)
+{
+    filebuf *f = ud;
+    size_t n = size * nmemb;
+    size_t wrote = fwrite(ptr, 1, n, f->fp);
+    f->written += wrote;
+    return wrote;
+}
+
+int http_download_file(const char *url, const char *dest_path,
+                       char *err, size_t errsz)
+{
+    if (!url || !dest_path) return -1;
+
+    /* Write to a temp file; rename into place on success. */
+    char tmp[512];
+    snprintf(tmp, sizeof(tmp), "%s.part", dest_path);
+
+    FILE *fp = fopen(tmp, "wb");
+    if (!fp) { set_err(err, errsz, "cannot open output file"); return -1; }
+
+    CURL *curl = curl_easy_init();
+    if (!curl) { fclose(fp); remove(tmp); set_err(err, errsz, "curl init failed"); return -1; }
+
+    filebuf fb = { .fp = fp };
+    char curlerr[CURL_ERROR_SIZE] = {0};
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &fb);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, HTTP_UA);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curlerr);
+
+    CURLcode rc = curl_easy_perform(curl);
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+    fclose(fp);
+
+    if (rc != CURLE_OK) {
+        remove(tmp);
+        set_err(err, errsz, curlerr[0] ? curlerr : curl_easy_strerror(rc));
+        return -1;
+    }
+    if (status >= 400) {
+        remove(tmp);
+        char msg[HTTP_ERR_LEN];
+        snprintf(msg, sizeof(msg), "HTTP %ld", status);
+        set_err(err, errsz, msg);
+        return -1;
+    }
+    if (fb.written == 0) {
+        remove(tmp);
+        set_err(err, errsz, "Empty response");
+        return -1;
+    }
+    if (rename(tmp, dest_path) != 0) {
+        remove(tmp);
+        set_err(err, errsz, "rename failed");
+        return -1;
+    }
     return 0;
 }

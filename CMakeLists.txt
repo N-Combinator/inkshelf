@@ -17,6 +17,8 @@ add_executable(inkshelf.app
     src/opds.c
     src/opds_ui.c
     src/http.c
+    src/library.c
+    src/download.c
 )
 
 target_include_directories(inkshelf.app PRIVATE
