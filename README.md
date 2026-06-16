@@ -30,9 +30,13 @@ entries:
 1. Pick a preset (Project Gutenberg, Flibusta) or **Custom URL...** and type an
    OPDS feed address with the on-screen keyboard.
 2. Browse the feed; nested catalogs open inline, book entries open a detail
-   view. Tap the filter bar at the top of any list to narrow it by title or
-   author; the **Menu** key runs the catalog's own server-side search where the
-   feed advertises one.
+   view. Tap the filter bar at the top of any list to narrow the loaded entries
+   by title or author. The **Menu** key runs a server-side search whose scope
+   follows where you are: on a catalog's main screen it searches the **whole
+   library** (via the root feed's search endpoint), and inside a category it
+   searches **that category** when the feed advertises its own search link. If
+   the catalog (or that section) offers no search, Menu falls back to filtering
+   the loaded list and says so.
 3. Open a book and confirm download — the file lands in the device library and
    the PocketBook library is rescanned so it shows up immediately.
 
