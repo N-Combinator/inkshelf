@@ -61,6 +61,7 @@ void CloseApp(void);
 void OpenKeyboard(const char *title, char *buf, int maxlen, int flags, iv_kbdhandler h);
 int Message(int icon, const char *title, const char *text, int timeout);
 void SendEvent(void *hproc, int type, int par1, int par2);
+int NetConnect(const char *name);
 void InkViewMain(int (*h)(int,int,int));
 #endif
 EOF
@@ -70,7 +71,15 @@ cat > "${INC}/curl/curl.h" <<'EOF'
 #define CURL_H
 #include <stddef.h>
 typedef void CURL;
-typedef enum { CURLE_OK = 0 } CURLcode;
+typedef enum {
+    CURLE_OK = 0,
+    CURLE_COULDNT_RESOLVE_HOST = 6,
+    CURLE_COULDNT_CONNECT = 7,
+    CURLE_OPERATION_TIMEDOUT = 28,
+    CURLE_GOT_NOTHING = 52,
+    CURLE_SEND_ERROR = 55,
+    CURLE_RECV_ERROR = 56
+} CURLcode;
 #define CURL_ERROR_SIZE 256
 #define CURLOPT_URL 1
 #define CURLOPT_WRITEFUNCTION 2

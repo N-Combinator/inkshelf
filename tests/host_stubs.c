@@ -48,6 +48,7 @@ void FullUpdate(void) {}
 void PartialUpdate(int a, int b, int c, int d) { (void)a; (void)b; (void)c; (void)d; }
 void CloseApp(void) {}
 int Message(int i, const char *t, const char *x, int to) { (void)i; (void)t; (void)x; (void)to; return 0; }
+int NetConnect(const char *name) { (void)name; return 0; }
 
 /* Keyboard immediately returns a query, driving the search path. */
 void OpenKeyboard(const char *t, char *b, int m, int f, iv_kbdhandler h)
@@ -70,7 +71,10 @@ void InkViewMain(int (*h)(int, int, int))
     g_handler = h;
     h(EVT_INIT, 0, 0);              /* main menu */
     h(EVT_KEYPRESS, KEY_OK, 0);     /* -> OPDS catalog picker */
-    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> browse preset feed (Standard Ebooks) */
+    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> browse preset feed (Project Gutenberg) */
+    h(EVT_POINTERUP, 120, 96);      /* tap filter bar -> local filter (stub query) */
+    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop the filtered browse */
+    h(EVT_KEYPRESS, KEY_OK, 0);     /* re-open the preset feed, filter cleared */
     h(EVT_KEYPRESS, KEY_DOWN, 0);   /* select book entry */
     h(EVT_KEYPRESS, KEY_OK, 0);     /* -> book detail */
     h(EVT_KEYPRESS, KEY_OK, 0);     /* -> trigger download (stubbed) */

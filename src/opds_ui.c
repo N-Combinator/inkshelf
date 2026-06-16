@@ -13,6 +13,7 @@
 
 #define _POSIX_C_SOURCE 200809L   /* strdup */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +28,9 @@
 #include "ui.h"
 
 #define URLCAP 1024
+#define SEARCHBAR_H 56        /* on-screen local-filter bar, below the header */
+#define SB_PAD      24
+#define FILTER_CAP  80
 
 static screen_t *make_browse(const char *url);
 static screen_t *make_book_detail(const opds_entry *e, const char *base_url);
@@ -55,10 +59,12 @@ typedef struct {
     ui_list list;
     ui_list_item *items;
     char **labels;          /* owned secondary strings, one per display row */
+    int *entry_index;       /* display row -> feed entry index (-1 = "More results") */
     int display_count;
     int has_next;
     int ok;
     int loaded;
+    char filter[FILTER_CAP];   /* local title/author filter ("" = show all) */
     char err[HTTP_ERR_LEN];
 } browse_state;
 
@@ -69,10 +75,38 @@ static void browse_clear_items(browse_state *b)
         free(b->labels);
     }
     free(b->items);
+    free(b->entry_index);
     b->items = NULL;
     b->labels = NULL;
+    b->entry_index = NULL;
     b->display_count = 0;
     b->has_next = 0;
+}
+
+/* Case-insensitive substring test; an empty needle matches everything. */
+static int str_contains_ci(const char *hay, const char *needle)
+{
+    if (!needle || !needle[0]) return 1;
+    if (!hay) return 0;
+    size_t nl = strlen(needle);
+    for (const char *p = hay; *p; p++) {
+        size_t i = 0;
+        while (i < nl && p[i] &&
+               tolower((unsigned char)p[i]) == tolower((unsigned char)needle[i]))
+            i++;
+        if (i == nl) return 1;
+    }
+    return 0;
+}
+
+/* An entry survives the local filter if the query appears in its title or
+ * author. Works on every catalog because it runs over already-loaded entries
+ * (no dependency on a server-side OpenSearch link). */
+static int entry_matches(const opds_entry *e, const char *filter)
+{
+    if (!filter || !filter[0]) return 1;
+    return str_contains_ci(e->title, filter) ||
+           str_contains_ci(e->author, filter);
 }
 
 static void browse_build_items(browse_state *b)
@@ -80,17 +114,24 @@ static void browse_build_items(browse_state *b)
     browse_clear_items(b);
     opds_feed *f = b->feed;
 
-    b->has_next = opds_feed_link_href(f, "next") ? 1 : 0;
-    int n = f->entry_count + b->has_next;
-    int alloc = n > 0 ? n : 1;
+    int filtering = b->filter[0] != '\0';
+    /* "More results" paging only applies to the full feed: the next page is
+     * fetched server-side and would arrive unfiltered, so hide it while a
+     * local filter is active. */
+    b->has_next = (!filtering && opds_feed_link_href(f, "next")) ? 1 : 0;
 
+    int alloc = f->entry_count + 1;   /* worst case: every entry + a next row */
     b->items = calloc(alloc, sizeof(*b->items));
     b->labels = calloc(alloc, sizeof(*b->labels));
-    if (!b->items || !b->labels) { browse_clear_items(b); return; }
+    b->entry_index = calloc(alloc, sizeof(*b->entry_index));
+    if (!b->items || !b->labels || !b->entry_index) { browse_clear_items(b); return; }
 
+    int n = 0;
     for (int i = 0; i < f->entry_count; i++) {
         opds_entry *e = &f->entries[i];
-        b->items[i].primary = e->title ? e->title : "(untitled)";
+        if (filtering && !entry_matches(e, b->filter)) continue;
+
+        b->items[n].primary = e->title ? e->title : "(untitled)";
 
         const char *sec = NULL;
         if (opds_entry_is_navigation(e)) {
@@ -105,17 +146,22 @@ static void browse_build_items(browse_state *b)
         } else {
             sec = e->author;
         }
-        b->labels[i] = sec ? strdup(sec) : NULL;
-        b->items[i].secondary = b->labels[i];
+        b->labels[n] = sec ? strdup(sec) : NULL;
+        b->items[n].secondary = b->labels[n];
+        b->entry_index[n] = i;
+        n++;
     }
 
     if (b->has_next) {
-        b->items[f->entry_count].primary = "More results...";
-        b->items[f->entry_count].secondary = NULL;
+        b->items[n].primary = "More results...";
+        b->items[n].secondary = NULL;
+        b->entry_index[n] = -1;
+        n++;
     }
 
     b->display_count = n;
     ui_list_init(&b->list, b->items, n);
+    ui_list_set_top_inset(&b->list, SEARCHBAR_H);
 }
 
 static void browse_load(browse_state *b, const char *url)
@@ -167,6 +213,30 @@ static void browse_enter(screen_t *self)
     if (!b->loaded) browse_load(b, b->url);
 }
 
+/* Tappable filter bar just under the header. Shows the active query or a
+ * prompt; tapping it opens the keyboard (see browse_pointer). */
+static void draw_search_bar(const browse_state *b)
+{
+    int w = ScreenWidth();
+    int y = ui_header_height();
+    int bx = SB_PAD, by = y + 6;
+    int bw = w - 2 * SB_PAD, bh = SEARCHBAR_H - 12;
+    const ui_fonts *f = ui_get_fonts();
+
+    FillArea(0, y, w, SEARCHBAR_H, WHITE);
+    DrawRect(bx, by, bw, bh, DGRAY);
+
+    char line[FILTER_CAP + 48];
+    if (b->filter[0]) {
+        snprintf(line, sizeof line, "Filter: %s   (tap to edit)", b->filter);
+        SetFont(f->sub, BLACK);
+    } else {
+        snprintf(line, sizeof line, "Tap to filter by title or author");
+        SetFont(f->sub, DGRAY);
+    }
+    DrawTextRect(bx + 12, by, bw - 24, bh, line, ALIGN_LEFT | VALIGN_MIDDLE);
+}
+
 static void browse_show(screen_t *self)
 {
     browse_state *b = self->data;
@@ -187,10 +257,11 @@ static void browse_show(screen_t *self)
 
     ClearScreen();
     ui_draw_header(title);
+    draw_search_bar(b);
     ui_list_draw(&b->list);
     ui_draw_footer(opds_feed_search_href(b->feed)
-                   ? "OK: open  Menu: search  Back"
-                   : "OK: open  Back");
+                   ? "OK open \xC2\xB7 tap bar filters \xC2\xB7 Menu searches catalog \xC2\xB7 Back"
+                   : "OK open \xC2\xB7 tap bar filters list \xC2\xB7 Back");
     ui_flush_full();
 }
 
@@ -199,11 +270,13 @@ static void browse_open_selected(screen_t *self)
     browse_state *b = self->data;
     if (!b->ok) return;
 
-    int idx = b->list.selected;
+    int row = b->list.selected;
+    if (row < 0 || row >= b->display_count) return;
+    int idx = b->entry_index[row];   /* feed entry, or -1 for "More results" */
     char abs[URLCAP];
 
     /* "More results" synthetic row -> load next page in place. */
-    if (b->has_next && idx == b->feed->entry_count) {
+    if (idx < 0) {
         const char *nh = opds_feed_link_href(b->feed, "next");
         if (nh && opds_resolve_url(b->url, nh, abs, sizeof(abs)) == 0) {
             browse_load(b, abs);
@@ -213,7 +286,7 @@ static void browse_open_selected(screen_t *self)
         return;
     }
 
-    if (idx < 0 || idx >= b->feed->entry_count) return;
+    if (idx >= b->feed->entry_count) return;
     opds_entry *e = &b->feed->entries[idx];
 
     if (opds_entry_is_navigation(e)) {
@@ -283,6 +356,35 @@ static void search_kbd_cb(char *text)
     do_search(g_search_origin, text);
 }
 
+/* ---- local filter (client-side, works on every catalog) ----------- */
+
+static browse_state *g_filter_origin;
+static screen_t     *g_filter_screen;
+static char          g_filter_query[FILTER_CAP];
+
+/* Keyboard result for the on-screen filter bar: an empty string clears the
+ * filter and shows everything again. Rebuilds the visible rows in place. */
+static void filter_kbd_cb(char *text)
+{
+    if (!g_filter_origin || !g_filter_screen) return;
+    browse_state *b = g_filter_origin;
+    snprintf(b->filter, sizeof b->filter, "%s", text ? text : "");
+    browse_build_items(b);
+    b->list.selected = 0;
+    b->list.top = 0;
+    browse_show(g_filter_screen);
+}
+
+static void filter_open(browse_state *b, screen_t *self)
+{
+    g_filter_origin = b;
+    g_filter_screen = self;
+    /* Pre-fill with the current query so tapping the bar edits, not resets. */
+    snprintf(g_filter_query, sizeof g_filter_query, "%s", b->filter);
+    OpenKeyboard("Filter by title or author", g_filter_query,
+                 (int)sizeof(g_filter_query) - 1, 0, filter_kbd_cb);
+}
+
 static int browse_key(screen_t *self, int key)
 {
     browse_state *b = self->data;
@@ -331,6 +433,14 @@ static int browse_pointer(screen_t *self, int x, int y)
     }
     browse_state *b = self->data;
     if (!b->ok) return 0;
+
+    /* Tap on the filter bar (between header and first row) -> edit the query. */
+    int sb_y = ui_header_height();
+    if (y >= sb_y && y < sb_y + SEARCHBAR_H) {
+        filter_open(b, self);
+        return 1;
+    }
+
     int idx = ui_list_hit(&b->list, x, y);
     if (idx < 0) return 0;
     if (idx != b->list.selected) {
@@ -346,6 +456,7 @@ static void browse_destroy(screen_t *self)
     browse_state *b = self->data;
     if (b) {
         if (g_search_origin == b) g_search_origin = NULL;
+        if (g_filter_origin == b) { g_filter_origin = NULL; g_filter_screen = NULL; }
         free(b->url);
         if (b->feed) opds_feed_free(b->feed);
         browse_clear_items(b);
@@ -566,15 +677,16 @@ static screen_t *make_book_detail(const opds_entry *e, const char *base_url)
 /* Presets must line up index-for-index with the first CATALOG_PRESETS entries
  * of CATALOG_ITEMS; "Custom URL..." stays last (see catalog_open). */
 static const char *PRESET_URLS[] = {
-    "https://standardebooks.org/feeds/opds",
     "https://www.gutenberg.org/ebooks.opds/",
     /* Flibusta's OPDS lives on flibusta.is (the .su host has no /opds and 404s).
      * .is can be blocked in some regions; users behind a block can still add a
      * working mirror via "Custom URL...". */
     "https://flibusta.is/opds",
+    /* Standard Ebooks was dropped: its OPDS feed now returns HTTP 401 (requires
+     * a patron account), so it can't be a public preset. Gutenberg covers the
+     * same English public-domain ground. */
 };
 static const ui_list_item CATALOG_ITEMS[] = {
-    { "Standard Ebooks",  "standardebooks.org - curated public domain" },
     { "Project Gutenberg", "gutenberg.org - 70k+ free books" },
     { "Flibusta",          "flibusta.is - large Russian-language library" },
     { "Custom URL...",     "Enter an OPDS catalog address" },

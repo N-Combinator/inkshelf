@@ -71,6 +71,11 @@ typedef struct {
  * screen size. Selection starts at 0. */
 void ui_list_init(ui_list *list, const ui_list_item *items, int count);
 
+/* Reserve `px` pixels at the top of the list area (between the header and the
+ * first row) for a screen-drawn widget such as a search/filter bar, and
+ * recompute the visible-row geometry. Call right after ui_list_init(). */
+void ui_list_set_top_inset(ui_list *list, int px);
+
 /* Draw the list rows within the content area (does not touch header/footer). */
 void ui_list_draw(const ui_list *list);
 

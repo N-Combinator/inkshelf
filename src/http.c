@@ -18,7 +18,8 @@
 
 #include "http.h"
 
-#define HTTP_UA       "inkshelf/0.1 (PocketBook)"
+#define HTTP_UA       "inkshelf/1.0 (PocketBook)"
+#define HTTP_RETRIES  2            /* extra attempts on transient WiFi errors */
 #define HTTP_TIMEOUT  30L
 #define HTTP_MAX_BODY (32 * 1024 * 1024)   /* 32 MB cap for in-memory feeds */
 #define HTTP_MAX_FILE (512UL * 1024 * 1024) /* 512 MB cap for book downloads */
@@ -132,6 +133,51 @@ static void http_apply_tls(CURL *curl)
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 }
 
+/* Transient errors worth a retry: the reader's WiFi drops in and out, so a DNS
+ * miss, failed connect, timeout or a mid-transfer socket error is often gone by
+ * the next attempt. Auth/TLS/protocol failures are not retried — they would
+ * just fail again. */
+static int http_err_transient(CURLcode rc)
+{
+    switch (rc) {
+    case CURLE_COULDNT_RESOLVE_HOST:
+    case CURLE_COULDNT_CONNECT:
+    case CURLE_OPERATION_TIMEDOUT:
+    case CURLE_GOT_NOTHING:
+    case CURLE_SEND_ERROR:
+    case CURLE_RECV_ERROR:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* Run the configured transfer, retrying transient network failures a couple of
+ * times. `reset` clears any per-attempt accumulator before each retry. */
+static CURLcode http_perform_retry(CURL *curl, void (*reset)(void *), void *ud)
+{
+    CURLcode rc = CURLE_OK;
+    for (int attempt = 0; attempt <= HTTP_RETRIES; attempt++) {
+        if (attempt > 0) {
+            if (reset) reset(ud);
+            http_log("  retry %d/%d (prev rc=%d)", attempt, HTTP_RETRIES, rc);
+        }
+        rc = curl_easy_perform(curl);
+        if (rc == CURLE_OK || !http_err_transient(rc))
+            break;
+    }
+    return rc;
+}
+
+static void membuf_reset(void *ud)
+{
+    membuf *m = ud;
+    free(m->data);
+    m->data = NULL;
+    m->len = 0;
+    m->overflow = 0;
+}
+
 int http_get_mem(const char *url, char **out_buf, size_t *out_len,
                  char *err, size_t errsz)
 {
@@ -164,7 +210,7 @@ int http_get_mem(const char *url, char **out_buf, size_t *out_len,
     http_log_env_once();
     http_log("GET %s", url ? url : "(null)");
 
-    CURLcode rc = curl_easy_perform(curl);
+    CURLcode rc = http_perform_retry(curl, membuf_reset, &m);
     long status = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
 
