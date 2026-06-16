@@ -154,21 +154,33 @@ static int http_err_transient(CURLcode rc)
 }
 
 /* Run the configured transfer, retrying transient network failures a couple of
- * times. `reset` clears any per-attempt accumulator before each retry. */
-static CURLcode http_perform_retry(CURL *curl, void (*reset)(void *), void *ud)
+ * times. `reset` clears any per-attempt accumulator before each retry.
+ *
+ * Before every attempt we make sure WiFi is actually connected: the firmware
+ * powers the radio down on its idle timer, and NetConnect() returns before the
+ * interface is routable again, so without the wait the retries just race a
+ * still-waking radio and all fail (observed: connect errors retried, all rc=7).
+ * If the radio can't be brought back within the budget we set *offline and stop
+ * — the caller turns that into a clear "no connection" message. */
+static CURLcode http_perform_retry(CURL *curl, void (*reset)(void *), void *ud,
+                                   int *offline)
 {
     CURLcode rc = CURLE_OK;
+    if (offline) *offline = 0;
     for (int attempt = 0; attempt <= HTTP_RETRIES; attempt++) {
-        if (attempt > 0) {
-            if (reset) reset(ud);
-            /* The firmware's idle timer may have powered the radio down mid-
-             * session, so a transient failure is often just "WiFi asleep".
-             * Re-assert the link before retrying instead of burning every
-             * attempt against a dead radio. */
-            net_ensure_online();
-            http_log("  retry %d/%d (prev rc=%d, re-asserted WiFi)",
-                     attempt, HTTP_RETRIES, rc);
+        if (attempt > 0 && reset) reset(ud);
+
+        if (!net_wait_online(NET_WAIT_TIMEOUT_MS, NET_WAIT_POLL_MS)) {
+            http_log("  WiFi did not reconnect within %dms — aborting",
+                     NET_WAIT_TIMEOUT_MS);
+            if (offline) *offline = 1;
+            if (rc == CURLE_OK) rc = CURLE_COULDNT_CONNECT;
+            break;
         }
+        if (attempt > 0)
+            http_log("  retry %d/%d (prev rc=%d, WiFi reconnected)",
+                     attempt, HTTP_RETRIES, rc);
+
         rc = curl_easy_perform(curl);
         if (rc == CURLE_OK || !http_err_transient(rc))
             break;
@@ -217,7 +229,8 @@ int http_get_mem(const char *url, char **out_buf, size_t *out_len,
     http_log_env_once();
     http_log("GET %s", url ? url : "(null)");
 
-    CURLcode rc = http_perform_retry(curl, membuf_reset, &m);
+    int offline = 0;
+    CURLcode rc = http_perform_retry(curl, membuf_reset, &m, &offline);
     long status = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
 
@@ -226,7 +239,9 @@ int http_get_mem(const char *url, char **out_buf, size_t *out_len,
     http_log_snippet(m.data, m.len);
 
     if (rc != CURLE_OK) {
-        if (m.overflow) {
+        if (offline) {
+            set_err(err, errsz, "No network connection — check WiFi");
+        } else if (m.overflow) {
             set_err(err, errsz, "response too large");
         } else {
             /* Lead the message with the numeric CURLcode so a photo of the

@@ -18,6 +18,7 @@
 #include "inkview.h"
 #include "download.h"
 #include "library.h"
+#include "net.h"
 
 #define HTTP_UA "inkshelf/0.1 (PocketBook)"
 
@@ -113,6 +114,16 @@ int download_book(const char *url,
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curlerr);
+
+    /* WiFi may have idled out while the reader browsed; bring the radio up and
+     * wait until it is actually connected before the transfer, otherwise it
+     * fails immediately against a still-waking radio (see net.h). */
+    if (!net_wait_online(NET_WAIT_TIMEOUT_MS, NET_WAIT_POLL_MS)) {
+        curl_easy_cleanup(curl);
+        fclose(fp);
+        remove(tmp_path);
+        FAIL("No network connection — check WiFi");
+    }
 
     CURLcode rc = curl_easy_perform(curl);
     long status = 0;

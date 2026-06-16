@@ -49,6 +49,9 @@ void PartialUpdate(int a, int b, int c, int d) { (void)a; (void)b; (void)c; (voi
 void CloseApp(void) {}
 int Message(int i, const char *t, const char *x, int to) { (void)i; (void)t; (void)x; (void)to; return 0; }
 int NetConnect(const char *name) { (void)name; return 0; }
+/* Host: always report the link as connected so net_wait_online() takes its
+ * fast path (no polling / nanosleep) and the tests stay instant. */
+int QueryNetwork(void) { return NET_CONNECTED; }
 
 /* Keyboard immediately returns a query, driving the search path. */
 void OpenKeyboard(const char *t, char *b, int m, int f, iv_kbdhandler h)
