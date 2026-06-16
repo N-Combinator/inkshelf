@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 
+#include "app.h"
 #include "ui.h"
 
 /* Layout constants (px). PocketBook panels are high-DPI, so these are sized
@@ -12,6 +13,17 @@
 #define FOOTER_H   56
 #define PAD_X      24
 #define ROW_PAD_Y  10
+
+/* On-screen Back button, drawn at the right of the header on every non-root
+ * screen. */
+#define BACK_W     128
+#define BACK_H     48
+
+/* On-screen primary action button (e.g. Download), drawn centred just above
+ * the footer so it is reachable by touch on key-less PocketBook models. */
+#define ACTION_H        64
+#define ACTION_MAX_W    400
+#define ACTION_MARGIN   12
 
 static ui_fonts g_fonts;
 
@@ -39,16 +51,51 @@ const ui_fonts *ui_get_fonts(void)
 int ui_header_height(void) { return HEADER_H; }
 int ui_footer_height(void) { return FOOTER_H; }
 
+/* Geometry of the on-screen Back button (top-right of the header). */
+static void back_button_rect(int *x, int *y, int *w, int *h)
+{
+    *w = BACK_W;
+    *h = BACK_H;
+    *x = ScreenWidth() - PAD_X - BACK_W;
+    *y = (HEADER_H - BACK_H) / 2;
+}
+
 void ui_draw_header(const char *title)
 {
     int w = ScreenWidth();
+    int title_w = w - 2 * PAD_X;
 
     FillArea(0, 0, w, HEADER_H, WHITE);
+
+    /* Non-root screens get a tappable Back button so navigation never depends
+     * on a particular hardware key being present. */
+    if (nav_depth() > 1) {
+        int bx, by, bw, bh;
+        back_button_rect(&bx, &by, &bw, &bh);
+        DrawRect(bx, by, bw, bh, BLACK);
+        DrawRect(bx + 1, by + 1, bw - 2, bh - 2, BLACK);
+        SetFont(g_fonts.sub, BLACK);
+        DrawTextRect(bx, by, bw, bh, "\xE2\x80\xB9 Back",
+                     ALIGN_CENTER | VALIGN_MIDDLE);
+        title_w = bx - PAD_X - 12;
+        if (title_w < 0) title_w = 0;
+    }
+
     SetFont(g_fonts.title, BLACK);
-    DrawTextRect(PAD_X, 0, w - 2 * PAD_X, HEADER_H,
+    DrawTextRect(PAD_X, 0, title_w, HEADER_H,
                  title ? title : "", ALIGN_LEFT | VALIGN_MIDDLE);
     /* Separator under the header. */
     DrawLine(0, HEADER_H - 1, w, HEADER_H - 1, BLACK);
+}
+
+int ui_back_button_hit(int x, int y)
+{
+    if (nav_depth() <= 1) return 0;
+    int bx, by, bw, bh;
+    back_button_rect(&bx, &by, &bw, &bh);
+    /* Generous touch target: forgive a few px around the drawn box and accept
+     * the full header height so a fat-finger tap still registers. */
+    return x >= bx - 8 && x <= bx + bw + 8 && y >= 0 && y <= HEADER_H;
 }
 
 void ui_draw_footer(const char *hint)
@@ -62,6 +109,45 @@ void ui_draw_footer(const char *hint)
     SetFont(g_fonts.sub, DGRAY);
     DrawTextRect(PAD_X, y, w - 2 * PAD_X, FOOTER_H,
                  hint ? hint : "", ALIGN_CENTER | VALIGN_MIDDLE);
+}
+
+/* Geometry of the centred action button (just above the footer). */
+static void action_button_rect(int *x, int *y, int *bw, int *bh)
+{
+    int w = ScreenWidth();
+    int aw = w - 2 * PAD_X;
+    if (aw > ACTION_MAX_W) aw = ACTION_MAX_W;
+    *bw = aw;
+    *bh = ACTION_H;
+    *x = (w - aw) / 2;
+    *y = ScreenHeight() - FOOTER_H - ACTION_MARGIN - ACTION_H;
+}
+
+int ui_action_button_top(void)
+{
+    int x, y, bw, bh;
+    action_button_rect(&x, &y, &bw, &bh);
+    return y - ACTION_MARGIN;
+}
+
+void ui_draw_action_button(const char *label)
+{
+    int x, y, bw, bh;
+    action_button_rect(&x, &y, &bw, &bh);
+    /* Double-stroked border so the tappable target reads clearly on e-ink. */
+    DrawRect(x, y, bw, bh, BLACK);
+    DrawRect(x + 1, y + 1, bw - 2, bh - 2, BLACK);
+    SetFont(g_fonts.item, BLACK);
+    DrawTextRect(x, y, bw, bh, label ? label : "", ALIGN_CENTER | VALIGN_MIDDLE);
+}
+
+int ui_action_button_hit(int x, int y)
+{
+    int bx, by, bw, bh;
+    action_button_rect(&bx, &by, &bw, &bh);
+    /* Forgive a few px around the drawn box for fat-finger taps. */
+    return x >= bx - 8 && x <= bx + bw + 8 &&
+           y >= by - 8 && y <= by + bh + 8;
 }
 
 void ui_flush_full(void)
@@ -202,6 +288,7 @@ ui_nav_action ui_nav_classify(int key)
         return UI_NAV_SELECT;
     case KEY_BACK:
     case KEY_HOME:
+    case KEY_MENU:
         return UI_NAV_BACK;
     default:
         return UI_NAV_NONE;

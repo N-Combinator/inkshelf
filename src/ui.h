@@ -23,11 +23,28 @@ void ui_fonts_open(void);
 void ui_fonts_close(void);
 const ui_fonts *ui_get_fonts(void);
 
-/* Chrome. Header draws the title bar; footer draws a centred hint line. */
+/* Chrome. Header draws the title bar; footer draws a centred hint line.
+ * The header automatically shows an on-screen "Back" button whenever the nav
+ * stack is deeper than the root screen, so Back is reachable by touch on any
+ * PocketBook regardless of its hardware key layout (some models are
+ * touch-only). Screens route taps through ui_back_button_hit(). */
 int  ui_header_height(void);
 int  ui_footer_height(void);
 void ui_draw_header(const char *title);
 void ui_draw_footer(const char *hint);
+
+/* Returns non-zero if (x, y) falls on the on-screen Back button. Always 0 on
+ * the root screen (no button is drawn there). Screens should call this at the
+ * top of their on_pointer handler and nav_pop() when it returns true. */
+int  ui_back_button_hit(int x, int y);
+
+/* Centred primary action button (e.g. Download), drawn just above the footer
+ * so an action is reachable by touch on key-less PocketBook models. Draw it
+ * with ui_draw_action_button(), route taps through ui_action_button_hit(),
+ * and keep body content above ui_action_button_top() so they never overlap. */
+void ui_draw_action_button(const char *label);
+int  ui_action_button_hit(int x, int y);
+int  ui_action_button_top(void);
 
 /* Push the whole framebuffer to the panel (full e-ink refresh). */
 void ui_flush_full(void);

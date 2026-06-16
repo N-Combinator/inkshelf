@@ -305,6 +305,10 @@ static int browse_key(screen_t *self, int key)
 
 static int browse_pointer(screen_t *self, int x, int y)
 {
+    if (ui_back_button_hit(x, y)) {
+        nav_pop();
+        return 1;
+    }
     browse_state *b = self->data;
     if (!b->ok) return 0;
     int idx = ui_list_hit(&b->list, x, y);
@@ -385,12 +389,20 @@ static void book_show(screen_t *self)
     }
     if (bk->summary) {
         SetFont(f->sub, BLACK);
-        int sh = ScreenHeight() - ui_footer_height() - yy - 12;
+        /* Stop the summary above the Download button (when shown) so the two
+         * never overlap; otherwise run down to just above the footer. */
+        int bottom = bk->dl_url ? ui_action_button_top()
+                                : ScreenHeight() - ui_footer_height();
+        int sh = bottom - yy - 12;
         if (sh > 0)
             DrawTextRect(x, yy, cw, sh, bk->summary, ALIGN_LEFT | VALIGN_TOP);
     }
 
-    ui_draw_footer(bk->dl_url ? "OK: download  Back" : "No file  Back");
+    if (bk->dl_url)
+        ui_draw_action_button("\xE2\xAC\x87 Download");
+
+    ui_draw_footer(bk->dl_url ? "Tap Download or press OK  \xE2\x80\xB9 Back"
+                              : "No downloadable file  \xE2\x80\xB9 Back");
     ui_flush_full();
 }
 
@@ -474,6 +486,20 @@ static int book_key(screen_t *self, int key)
     }
 }
 
+static int book_pointer(screen_t *self, int x, int y)
+{
+    if (ui_back_button_hit(x, y)) {
+        nav_pop();
+        return 1;
+    }
+    book_state *bk = self->data;
+    if (bk->dl_url && ui_action_button_hit(x, y)) {
+        book_do_download(self);
+        return 1;
+    }
+    return 0;
+}
+
 static void book_destroy(screen_t *self)
 {
     book_state *bk = self->data;
@@ -510,6 +536,7 @@ static screen_t *make_book_detail(const opds_entry *e, const char *base_url)
     s->data = bk;
     s->on_show = book_show;
     s->on_key = book_key;
+    s->on_pointer = book_pointer;
     s->on_destroy = book_destroy;
     return s;
 }
@@ -598,6 +625,10 @@ static int catalog_key(screen_t *self, int key)
 
 static int catalog_pointer(screen_t *self, int x, int y)
 {
+    if (ui_back_button_hit(x, y)) {
+        nav_pop();
+        return 1;
+    }
     catalog_state *st = self->data;
     int idx = ui_list_hit(&st->list, x, y);
     if (idx < 0) return 0;

@@ -167,8 +167,11 @@ static int wd_key(screen_t *self, int key)
 
 static int wd_pointer(screen_t *self, int x, int y)
 {
-    (void)x; (void)y;
-    /* Tap anywhere to refresh. */
+    if (ui_back_button_hit(x, y)) {
+        nav_pop();
+        return 1;
+    }
+    /* Tap anywhere else to refresh the status. */
     wd_draw(self);
     return 1;
 }
