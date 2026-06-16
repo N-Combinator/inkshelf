@@ -28,11 +28,14 @@ target_include_directories(inkshelf.app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# Embed the build version (latest git tag, else short commit hash) so the main
-# screen's about block can show it. Passed as a string literal; screens.c keeps
-# a "dev" fallback for builds outside a git checkout (e.g. the host test gate).
+# Embed the build version for the main screen's about block: the latest
+# semantic-version tag (v1.0, v1.1, ...), plus "-<n>-g<hash>" when the build is
+# ahead of that tag, else a bare short hash before the first tag exists. Only
+# v* tags count, so unrelated tags never become the displayed version. Passed
+# as a string literal; screens.c keeps a "dev" fallback for builds outside a git
+# checkout (e.g. the host test gate).
 execute_process(
-    COMMAND git describe --tags --always
+    COMMAND git describe --tags --always --match "v*"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     OUTPUT_VARIABLE GIT_VERSION
     OUTPUT_STRIP_TRAILING_WHITESPACE
