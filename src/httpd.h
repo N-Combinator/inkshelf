@@ -96,4 +96,21 @@ int httpd_recv_multipart(httpd_reader_fn reader, void *ud,
  */
 int httpd_safe_name(const char *raw, char *out, size_t outsz);
 
+/* Hard cap on a /deploy upload (the app binary), in bytes. */
+#define HTTPD_DEPLOY_MAX (10UL * 1024 * 1024)
+
+/*
+ * Deploy variant of the multipart receiver, backing POST /deploy. Unlike the
+ * book-drop path it overwrites a FIXED target "<dest_dir>/<app_name>" (atomic
+ * .part + rename, so it is safe even over the running binary), requires the
+ * part to declare Content-Type: application/octet-stream, and enforces the
+ * HTTPD_DEPLOY_MAX size cap. Exposed for host unit tests; the live server calls
+ * the same core internally. Returns 0 / -1 with `err` like httpd_recv_multipart.
+ */
+int httpd_recv_deploy(httpd_reader_fn reader, void *ud,
+                      const char *content_type, const char *dest_dir,
+                      const char *app_name,
+                      unsigned long long *out_bytes,
+                      char *err, size_t errsz);
+
 #endif /* INKSHELF_HTTPD_H */

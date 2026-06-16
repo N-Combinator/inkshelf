@@ -40,6 +40,12 @@
 #define HTTPD_MAX_UPLOAD  (512ULL * 1024 * 1024)  /* refuse books over 512 MB */
 #define HTTPD_BOUNDARY_MAX 200
 
+/* POST /deploy writes the new app binary here, atomically over the running ELF
+ * (.part + rename — ETXTBSY-safe). Kept self-contained so tests can't depend on
+ * a real device path. */
+#define DEPLOY_APP_DIR    "/mnt/ext1/applications"
+#define DEPLOY_APP_NAME   "inkshelf.app"
+
 /* ------------------------------------------------------------------ */
 /* small helpers                                                       */
 /* ------------------------------------------------------------------ */
@@ -238,6 +244,7 @@ static void kmp_prefix(const unsigned char *p, size_t n, int *pi)
 static int consume_to_delim(breader *b, const unsigned char *delim, size_t dl,
                             const int *pi, FILE *fp,
                             unsigned long long *written,
+                            unsigned long long max_upload,
                             char *err, size_t errsz)
 {
     size_t m = 0;
@@ -258,7 +265,7 @@ static int consume_to_delim(breader *b, const unsigned char *delim, size_t dl,
                         return -1;
                     }
                     *written += run;
-                    if (*written > HTTPD_MAX_UPLOAD) {
+                    if (*written > max_upload) {
                         set_err(err, errsz, "upload exceeds size limit");
                         return -1;
                     }
@@ -288,7 +295,7 @@ static int consume_to_delim(breader *b, const unsigned char *delim, size_t dl,
                     return -1;
                 }
                 *written += 1;
-                if (*written > HTTPD_MAX_UPLOAD) {
+                if (*written > max_upload) {
                     set_err(err, errsz, "upload exceeds size limit");
                     return -1;
                 }
@@ -329,8 +336,19 @@ static int unique_target(const char *dir, const char *name,
 /* Core multipart receiver, operating on an already-initialised breader so the
  * socket handler can keep reading from the same buffered stream after parsing
  * the request headers. The public reader_fn entry point below wraps this. */
+/*
+ * force_name    NULL  -> library mode: derive a sanitised, non-clobbering name
+ *                        from the upload's filename (book drop).
+ *               !NULL -> deploy mode: write straight to "<dest_dir>/<force_name>",
+ *                        overwriting via .part + rename (ETXTBSY-safe).
+ * require_octet  in deploy mode, reject parts whose Content-Type isn't
+ *                application/octet-stream.
+ * max_upload     hard byte cap for the streamed part.
+ */
 static int recv_multipart_br(breader *bp,
                              const char *content_type, const char *dest_dir,
+                             const char *force_name, int require_octet,
+                             unsigned long long max_upload,
                              char *out_name, size_t out_name_sz,
                              unsigned long long *out_bytes,
                              char *err, size_t errsz)
@@ -357,6 +375,7 @@ static int recv_multipart_br(breader *bp,
     char line[HTTPD_LINE_MAX];
     int seen_opener = 0;
     char filename[HTTPD_NAME_MAX] = {0};
+    char part_ctype[128] = {0};
 
     for (;;) {
         long n = br_read_line(bp, line, sizeof line);
@@ -370,6 +389,11 @@ static int recv_multipart_br(breader *bp,
         /* In part headers now. Collect until the blank line. */
         if (strncasecmp(line, "Content-Disposition:", 20) == 0)
             parse_disposition_filename(line, filename, sizeof filename);
+        if (strncasecmp(line, "Content-Type:", 13) == 0) {
+            const char *v = line + 13;
+            while (*v == ' ') v++;
+            snprintf(part_ctype, sizeof part_ctype, "%s", v);
+        }
 
         if (n == 0) {
             /* End of this part's headers; body follows. */
@@ -378,25 +402,43 @@ static int recv_multipart_br(breader *bp,
             /* A non-file field: skip its body to the next boundary, then keep
              * looking for a file part. */
             unsigned long long skip = 0;
-            if (consume_to_delim(bp, delim, (size_t)dl, pi, NULL, &skip, err, errsz) != 0)
+            if (consume_to_delim(bp, delim, (size_t)dl, pi, NULL, &skip,
+                                 max_upload, err, errsz) != 0)
                 return -1;
             /* After the delimiter: "--" ends the body, "\r\n" precedes a part. */
             int c1 = br_fill(bp) > 0 ? bp->buf[bp->pos] : -1;
             if (c1 == '-') { set_err(err, errsz, "no file in upload"); return -1; }
             seen_opener = 1;                       /* next lines are part headers */
             filename[0] = '\0';
+            part_ctype[0] = '\0';
             continue;
         }
     }
 
-    /* Stream the file part's body straight to "<target>.part". */
-    char safe[HTTPD_NAME_MAX];
-    httpd_safe_name(filename, safe, sizeof safe);
-
-    char target[1024];
-    if (unique_target(dest_dir, safe, target, sizeof target) != 0) {
-        set_err(err, errsz, "cannot build target path");
+    /* Deploy mode rejects a part that doesn't declare itself a raw binary. This
+     * is a sanity gate, not real auth — the Content-Type is client-supplied. */
+    if (require_octet && ci_strstr(part_ctype, "application/octet-stream") == NULL) {
+        set_err(err, errsz, "deploy requires application/octet-stream");
         return -1;
+    }
+
+    /* Stream the file part's body straight to "<target>.part". In deploy mode
+     * the target is fixed (overwrite the app); in library mode it is a
+     * sanitised, non-clobbering name derived from the upload. */
+    char target[1024];
+    if (force_name) {
+        if ((size_t)snprintf(target, sizeof target, "%s/%s", dest_dir, force_name)
+                >= sizeof target) {
+            set_err(err, errsz, "cannot build target path");
+            return -1;
+        }
+    } else {
+        char safe[HTTPD_NAME_MAX];
+        httpd_safe_name(filename, safe, sizeof safe);
+        if (unique_target(dest_dir, safe, target, sizeof target) != 0) {
+            set_err(err, errsz, "cannot build target path");
+            return -1;
+        }
     }
     char tmp[1100];
     snprintf(tmp, sizeof tmp, "%s.part", target);
@@ -414,7 +456,8 @@ static int recv_multipart_br(breader *bp,
     if (wrbuf) setvbuf(fp, wrbuf, _IOFBF, HTTPD_WRBUF);
 
     unsigned long long written = 0;
-    if (consume_to_delim(bp, delim, (size_t)dl, pi, fp, &written, err, errsz) != 0) {
+    if (consume_to_delim(bp, delim, (size_t)dl, pi, fp, &written,
+                         max_upload, err, errsz) != 0) {
         fclose(fp);
         free(wrbuf);
         remove(tmp);
@@ -459,7 +502,22 @@ int httpd_recv_multipart(httpd_reader_fn reader, void *ud,
     breader b;
     br_init(&b, reader, ud);
     return recv_multipart_br(&b, content_type, dest_dir,
+                             NULL, 0, HTTPD_MAX_UPLOAD,
                              out_name, out_name_sz, out_bytes, err, errsz);
+}
+
+int httpd_recv_deploy(httpd_reader_fn reader, void *ud,
+                      const char *content_type, const char *dest_dir,
+                      const char *app_name,
+                      unsigned long long *out_bytes,
+                      char *err, size_t errsz)
+{
+    breader b;
+    br_init(&b, reader, ud);
+    char name[HTTPD_NAME_MAX];
+    return recv_multipart_br(&b, content_type, dest_dir,
+                             app_name, 1, HTTPD_DEPLOY_MAX,
+                             name, sizeof name, out_bytes, err, errsz);
 }
 
 /* ------------------------------------------------------------------ */
@@ -594,6 +652,21 @@ static void record_error(const char *msg)
     pthread_mutex_unlock(&S.lock);
 }
 
+/* Relaunch inkshelf after a /deploy. We are running *inside* inkshelf.app, so we
+ * cannot kill+exec inline — we would die before the new binary starts and the
+ * client would never get its 200. Instead detach a shell (reparented to init,
+ * named "sh" so killall misses it) that waits for this response to flush, kills
+ * the old app, and launches the freshly written one. Best-effort UX only: the
+ * new binary is already swapped in regardless, so if the relaunch doesn't take
+ * the user just taps the icon. */
+static void deploy_schedule_restart(void)
+{
+    int rc = system("(sleep 2; killall " DEPLOY_APP_NAME " 2>/dev/null; sleep 1; "
+                     DEPLOY_APP_DIR "/" DEPLOY_APP_NAME " >/dev/null 2>&1 &) "
+                     ">/dev/null 2>&1 &");
+    (void)rc;
+}
+
 static void handle_conn(int cfd)
 {
     breader b;
@@ -603,7 +676,8 @@ static void handle_conn(int cfd)
     if (br_read_line(&b, line, sizeof line) < 0) return;
 
     char method[8] = {0};
-    sscanf(line, "%7s", method);
+    char path[256] = {0};
+    sscanf(line, "%7s %255s", method, path);
 
     /* Read headers, capturing the ones we need. */
     char content_type[512] = {0};
@@ -625,6 +699,32 @@ static void handle_conn(int cfd)
         send_response(cfd, "405 Method Not Allowed", "text/plain", "Method not allowed\n");
         return;
     }
+
+    /* POST /deploy: overwrite the running app binary and restart. Separate from
+     * the book-drop path — fixed target, octet-stream + 10 MB guards. */
+    if (strncmp(path, "/deploy", 7) == 0) {
+        if (ci_strstr(content_type, "multipart/form-data") == NULL) {
+            send_response(cfd, "400 Bad Request", "text/plain",
+                          "Expected multipart/form-data\n");
+            return;
+        }
+        char dname[HTTPD_NAME_MAX], derr[HTTPD_ERR_MAX];
+        unsigned long long dbytes = 0;
+        if (recv_multipart_br(&b, content_type, DEPLOY_APP_DIR,
+                              DEPLOY_APP_NAME, 1, HTTPD_DEPLOY_MAX,
+                              dname, sizeof dname, &dbytes, derr, sizeof derr) == 0) {
+            send_response(cfd, "200 OK", "text/plain",
+                          "Deployed. inkshelf will restart.\n");
+            deploy_schedule_restart();
+        } else {
+            record_error(derr);
+            char body[HTTPD_ERR_MAX + 32];
+            snprintf(body, sizeof body, "Deploy failed: %s\n", derr);
+            send_response(cfd, "500 Internal Server Error", "text/plain", body);
+        }
+        return;
+    }
+
     if (ci_strstr(content_type, "multipart/form-data") == NULL) {
         send_response(cfd, "400 Bad Request", "text/plain",
                       "Expected multipart/form-data\n");
@@ -647,6 +747,7 @@ static void handle_conn(int cfd)
      * the very same breader to the multipart parser so it continues from
      * exactly where header parsing stopped (no bytes dropped). */
     if (recv_multipart_br(&b, content_type, dir,
+                          NULL, 0, HTTPD_MAX_UPLOAD,
                           name, sizeof name, &bytes, err, sizeof err) == 0) {
         record_upload(name, bytes);
         char msg[400];
