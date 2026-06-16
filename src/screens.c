@@ -56,8 +56,8 @@ static void button_rect(int i, int *x, int *y, int *w, int *h)
 {
     int sw = ScreenWidth();
     int sh = ScreenHeight();
-    int top = (int)(sh * 0.42);                 /* about block gets the top 42% */
-    int bottom = sh - ui_footer_height() - 16;
+    int top = (int)(sh * 0.45);                 /* about block gets the top 45% */
+    int bottom = sh - ui_footer_height() - 48;
     int avail = bottom - top;
     int bh = (avail - BTN_GAP * (BTN_COUNT - 1)) / BTN_COUNT;
     if (bh < 1) bh = 1;
