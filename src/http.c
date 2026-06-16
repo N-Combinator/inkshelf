@@ -14,6 +14,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <curl/curl.h>
 
@@ -117,23 +118,54 @@ static void set_err(char *err, size_t errsz, const char *msg)
     }
 }
 
-/* The OPDS presets are HTTPS, but PocketBook firmware does not put a CA bundle
- * where libcurl looks by default, so TLS verification fails ("unable to get
- * local issuer certificate") and every catalog load errors out. Point curl at
- * whichever well-known bundle actually exists; if none does we leave curl's
- * own default in place and let the real TLS error surface to the user. */
+/* A path is usable as a CA bundle only if it is a regular file that is large
+ * enough to plausibly hold real certificates. The size floor matters on
+ * PocketBook: the firmware's /etc/ssl/certs/ca-certificates.crt exists (so a
+ * bare stat() accepts it) but is empty/unusable, and curl then rejects it with
+ * CURLE_SSL_CACERT_BADFILE (77). Requiring >= 1 KB skips that trap; the real
+ * Mozilla bundle we ship is ~190 KB. */
+static int ca_file_ok(const char *path)
+{
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size >= 1024;
+}
+
+/* The OPDS presets are HTTPS, but PocketBook firmware ships no usable CA bundle
+ * where libcurl looks by default, so TLS verification fails and every catalog
+ * load errors out. Find a real bundle: first one shipped next to the .app, then
+ * well-known locations (our recommended install path first). If none qualifies
+ * we leave curl's default and let the real TLS error surface (and be logged). */
 static const char *http_ca_bundle(void)
 {
+    /* 1) cacert.pem sitting in the same directory as the running binary — the
+     *    most self-contained install ("drop both files in applications/"). */
+    static char appca[1100];
+    char exe[1024];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    if (n > 0) {
+        exe[n] = '\0';
+        char *slash = strrchr(exe, '/');
+        if (slash) {
+            size_t dirlen = (size_t)(slash - exe) + 1;        /* keep the '/' */
+            if (dirlen + sizeof "cacert.pem" <= sizeof appca) {
+                memcpy(appca, exe, dirlen);
+                memcpy(appca + dirlen, "cacert.pem", sizeof "cacert.pem");
+                if (ca_file_ok(appca)) return appca;
+            }
+        }
+    }
+
+    /* 2) Well-known fixed locations; our recommended install path first. */
     static const char *const paths[] = {
-        "/mnt/ext1/system/config/cacert.pem",   /* PocketBook user partition */
+        "/mnt/ext1/system/config/cacert.pem",   /* recommended install path  */
+        "/mnt/ext1/applications/cacert.pem",     /* alongside the apps        */
         "/ebrmain/config/cacert.pem",            /* PocketBook system area    */
         "/etc/ssl/certs/ca-certificates.crt",    /* Debian / Ubuntu           */
         "/etc/ssl/cert.pem",                     /* BSD / musl / Alpine       */
         "/etc/pki/tls/certs/ca-bundle.crt",      /* RHEL / Fedora             */
     };
-    struct stat st;
     for (size_t i = 0; i < sizeof paths / sizeof paths[0]; i++)
-        if (stat(paths[i], &st) == 0 && S_ISREG(st.st_mode))
+        if (ca_file_ok(paths[i]))
             return paths[i];
     return NULL;
 }

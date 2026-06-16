@@ -85,8 +85,19 @@ docker run --rm --platform linux/amd64 \
 ./build.sh` runs the build inside it instead.)
 
 `build.sh` preflights and prints exactly what's missing (toolchain not found,
-Docker not running, image absent) instead of failing obscurely. The artifact is
-`build/inkshelf.app`.
+Docker not running, image absent) instead of failing obscurely. It then stages
+an install-ready folder at `build/dist/` containing **both** `inkshelf.app` and
+`cacert.pem` (the CA bundle, see below).
+
+### HTTPS needs a CA bundle
+
+PocketBook firmware ships no usable CA certificate bundle, so libcurl rejects
+every HTTPS OPDS catalog with `CURLE_SSL_CACERT_BADFILE` (curl error 77) unless
+a real bundle is present. inkshelf bundles the current Mozilla CA set
+(`assets/cacert.pem`, from <https://curl.se/ca/cacert.pem>) and, at runtime,
+looks for `cacert.pem` next to its own binary first, then at
+`/mnt/ext1/system/config/cacert.pem`. Refresh it periodically by re-downloading
+that file into `assets/`.
 
 ### Manual CMake invocation
 
@@ -100,7 +111,9 @@ cmake --build build --parallel
 ## Installing (no jailbreak)
 
 1. Connect the PocketBook to your computer over USB, or pull its SD card.
-2. Copy `build/inkshelf.app` to the `applications/` folder on the SD card.
+2. Copy **both** files from `build/dist/` — `inkshelf.app` *and* `cacert.pem` —
+   into the `applications/` folder on the SD card. (Without `cacert.pem`, HTTPS
+   OPDS catalogs fail with curl error 77; WiFi book drop still works.)
 3. Eject, then open **Applications** on the device and launch **inkshelf**.
 
 ## Testing
