@@ -14,11 +14,6 @@
 #define PAD_X      24
 #define ROW_PAD_Y  10
 
-/* Vertical scrollbar shown on the right of a list that overflows one page. */
-#define SCROLLBAR_W    10
-#define SCROLLBAR_GAP  8
-#define SCROLLBAR_MIN  24   /* minimum thumb height (px) */
-
 /* On-screen Back button, drawn at the right of the header on every non-root
  * screen. */
 #define BACK_W     128
@@ -203,38 +198,10 @@ static void ui_list_reveal(ui_list *list)
     if (list->top < 0) list->top = 0;
 }
 
-/* Width taken on the right by the scrollbar (0 when the list fits one page). */
-static int list_scrollbar_w(const ui_list *list)
-{
-    return (list->count > list->per_page) ? (SCROLLBAR_W + SCROLLBAR_GAP) : 0;
-}
-
-/* Draw the scrollbar track + thumb reflecting `top`/`per_page`/`count`. */
-static void list_draw_scrollbar(const ui_list *list)
-{
-    int w = ScreenWidth();
-    int bx = w - PAD_X - SCROLLBAR_W;
-    int ty = list->area_y + 4;
-    int th = list->area_h - 8;
-    if (th <= 0) return;
-
-    DrawRect(bx, ty, SCROLLBAR_W, th, LGRAY);
-
-    int thumb_h = th * list->per_page / list->count;
-    if (thumb_h < SCROLLBAR_MIN) thumb_h = SCROLLBAR_MIN;
-    if (thumb_h > th) thumb_h = th;
-
-    int max_top = list->count - list->per_page;   /* > 0 here */
-    int thumb_y = ty + (th - thumb_h) * list->top / max_top;
-
-    FillArea(bx + 1, thumb_y + 1, SCROLLBAR_W - 2, thumb_h - 2, DGRAY);
-}
-
 void ui_list_draw(const ui_list *list)
 {
     int w = ScreenWidth();
-    int bar = list_scrollbar_w(list);
-    int text_w = w - 2 * PAD_X - bar;
+    int text_w = w - 2 * PAD_X;
 
     FillArea(0, list->area_y, w, list->area_h, WHITE);
 
@@ -274,12 +241,10 @@ void ui_list_draw(const ui_list *list)
 
         /* Row separator (skip under the highlighted row). */
         if (!selected) {
-            DrawLine(PAD_X, y + list->row_h - 1, w - PAD_X - bar,
+            DrawLine(PAD_X, y + list->row_h - 1, w - PAD_X,
                      y + list->row_h - 1, LGRAY);
         }
     }
-
-    if (bar) list_draw_scrollbar(list);
 }
 
 int ui_list_move(ui_list *list, int delta)
@@ -306,12 +271,9 @@ int ui_list_page(ui_list *list, int dir)
 
 int ui_list_hit(const ui_list *list, int x, int y)
 {
+    (void)x;   /* rows span the full width now; only the row's y matters */
     if (list->count == 0) return -1;
     if (y < list->area_y || y >= list->area_y + list->area_h) return -1;
-    /* Taps on the scrollbar gutter don't open a row (avoids accidental opens
-     * when reaching for the bar). */
-    if (list_scrollbar_w(list) && x >= ScreenWidth() - PAD_X - SCROLLBAR_W - SCROLLBAR_GAP)
-        return -1;
 
     int row = (y - list->area_y) / list->row_h;
     int idx = list->top + row;
