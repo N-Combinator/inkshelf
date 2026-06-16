@@ -27,6 +27,7 @@
 #define HTTPD_NAME_MAX     256
 #define HTTPD_ERR_MAX      160
 #define HTTPD_IP_MAX       64
+#define HTTPD_PIN_MAX      16    /* room for a short numeric PIN + NUL */
 
 /* A snapshot of the server's live state, copied out under lock by
  * httpd_status(). The WiFi-drop UI screen polls this to show the URL to type
@@ -55,6 +56,21 @@ void httpd_stop(void);
 
 /* Copy the current status out (thread-safe). */
 void httpd_status(httpd_status_t *out);
+
+/*
+ * Set the access PIN every mutating request (POST /drop, POST /deploy) must
+ * present in an "X-Inkshelf-PIN" header. Pass "" or NULL to disable the gate
+ * (server is then open). Thread-safe; takes effect immediately, so the
+ * "Change PIN" UI can update a live server. The string is copied.
+ */
+void httpd_set_pin(const char *pin);
+
+/*
+ * Pure authorization predicate, exposed for host unit tests. Returns 1 if a
+ * request is allowed: true when no PIN is configured (configured NULL/empty),
+ * otherwise only when `provided` exactly equals `configured`.
+ */
+int httpd_pin_authorized(const char *configured, const char *provided);
 
 /*
  * Best-effort LAN IPv4 address of the device (e.g. "192.168.1.5") into `out`.

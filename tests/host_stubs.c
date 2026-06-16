@@ -105,6 +105,7 @@ int httpd_start(int port, char *err, size_t errsz)
     return 0;
 }
 void httpd_stop(void) {}
+void httpd_set_pin(const char *pin) { (void)pin; }
 void httpd_status(httpd_status_t *out)
 {
     if (!out) return;

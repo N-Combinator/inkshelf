@@ -574,7 +574,32 @@ static struct {
     int             running;
     int             started;
     httpd_status_t  st;
+    char            pin[HTTPD_PIN_MAX];     /* "" = gate disabled */
 } S = { .listen_fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
+
+int httpd_pin_authorized(const char *configured, const char *provided)
+{
+    if (!configured || !configured[0]) return 1;      /* no PIN set => open */
+    if (!provided) return 0;
+    return strcmp(configured, provided) == 0;
+}
+
+void httpd_set_pin(const char *pin)
+{
+    pthread_mutex_lock(&S.lock);
+    snprintf(S.pin, sizeof S.pin, "%s", pin ? pin : "");
+    pthread_mutex_unlock(&S.lock);
+}
+
+/* Authorize a request against the live PIN (snapshot under lock). */
+static int pin_ok(const char *provided)
+{
+    char cur[HTTPD_PIN_MAX];
+    pthread_mutex_lock(&S.lock);
+    snprintf(cur, sizeof cur, "%s", S.pin);
+    pthread_mutex_unlock(&S.lock);
+    return httpd_pin_authorized(cur, provided);
+}
 
 static long sock_read(void *ud, char *buf, size_t n)
 {
@@ -608,32 +633,38 @@ static void send_response(int fd, const char *status, const char *ctype,
     send_all(fd, body, strlen(body));
 }
 
+/* The upload page POSTs via fetch() so it can attach the X-Inkshelf-PIN header
+ * (a plain <form> cannot set custom headers). Vanilla JS, no dependencies. */
 static const char UPLOAD_FORM[] =
     "<!doctype html><html><head><meta charset=utf-8>"
     "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
     "<title>inkshelf \xE2\x80\x94 WiFi Book Drop</title>"
     "<style>body{font-family:sans-serif;max-width:34em;margin:3em auto;padding:0 1em}"
-    "h1{font-size:1.4em}input[type=file]{display:block;margin:1em 0}"
-    "button{font-size:1em;padding:.5em 1.2em}</style></head><body>"
+    "h1{font-size:1.4em}input{display:block;margin:.6em 0}"
+    "#pin{font-size:1.2em;letter-spacing:.3em;width:6em}"
+    "button{font-size:1em;padding:.5em 1.2em}"
+    "#out{margin-top:1em;white-space:pre-wrap}</style></head><body>"
     "<h1>Drop a book onto your PocketBook</h1>"
-    "<p>Choose an EPUB, FB2, PDF, MOBI or other book file and upload it. "
+    "<p>Enter the PIN shown on the reader, choose a book file and upload it. "
     "It will appear in your library.</p>"
-    "<form method=post enctype=multipart/form-data>"
-    "<input type=file name=file required>"
-    "<button type=submit>Upload</button></form></body></html>";
-
-static void result_page(int ok, const char *msg, char *out, size_t outsz)
-{
-    snprintf(out, outsz,
-             "<!doctype html><html><head><meta charset=utf-8>"
-             "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
-             "<title>inkshelf</title>"
-             "<style>body{font-family:sans-serif;max-width:34em;margin:3em auto;"
-             "padding:0 1em}</style></head><body>"
-             "<h1>%s</h1><p>%s</p><p><a href=\"/\">Upload another</a></p>"
-             "</body></html>",
-             ok ? "\xE2\x9C\x93 Book added" : "\xE2\x9C\x97 Upload failed", msg);
-}
+    "<form id=f>"
+    "<label>PIN <input id=pin inputmode=numeric maxlength=4 autocomplete=off></label>"
+    "<input type=file id=file required>"
+    "<button type=submit>Upload</button></form>"
+    "<div id=out></div>"
+    "<script>"
+    "var f=document.getElementById('f');"
+    "f.onsubmit=function(e){e.preventDefault();"
+    "var fl=document.getElementById('file').files[0];"
+    "if(!fl){return;}"
+    "var fd=new FormData();fd.append('file',fl);"
+    "var o=document.getElementById('out');o.textContent='Uploading\\u2026';"
+    "fetch('/drop',{method:'POST',headers:{'X-Inkshelf-PIN':"
+    "document.getElementById('pin').value},body:fd})"
+    ".then(function(r){return r.text().then(function(t){"
+    "o.textContent=(r.ok?'\\u2713 ':'\\u2717 ')+t;});})"
+    ".catch(function(err){o.textContent='\\u2717 '+err;});};"
+    "</script></body></html>";
 
 static void record_upload(const char *name, unsigned long long bytes)
 {
@@ -681,6 +712,7 @@ static void handle_conn(int cfd)
 
     /* Read headers, capturing the ones we need. */
     char content_type[512] = {0};
+    char req_pin[HTTPD_PIN_MAX] = {0};
     for (;;) {
         long n = br_read_line(&b, line, sizeof line);
         if (n <= 0) break;                          /* blank line or EOF */
@@ -688,6 +720,10 @@ static void handle_conn(int cfd)
             const char *v = line + 13;
             while (*v == ' ') v++;
             snprintf(content_type, sizeof content_type, "%s", v);
+        } else if (strncasecmp(line, "X-Inkshelf-PIN:", 15) == 0) {
+            const char *v = line + 15;
+            while (*v == ' ') v++;
+            snprintf(req_pin, sizeof req_pin, "%s", v);
         }
     }
 
@@ -697,6 +733,12 @@ static void handle_conn(int cfd)
     }
     if (strcasecmp(method, "POST") != 0) {
         send_response(cfd, "405 Method Not Allowed", "text/plain", "Method not allowed\n");
+        return;
+    }
+
+    /* Every mutating request must carry the right PIN (no-op when none is set). */
+    if (!pin_ok(req_pin)) {
+        send_response(cfd, "403 Forbidden", "text/plain", "Wrong or missing PIN\n");
         return;
     }
 
@@ -741,24 +783,24 @@ static void handle_conn(int cfd)
 
     char name[HTTPD_NAME_MAX], err[HTTPD_ERR_MAX];
     unsigned long long bytes = 0;
-    char page[1024];
 
     /* `b` already holds any body bytes read past the header blank line; hand
      * the very same breader to the multipart parser so it continues from
-     * exactly where header parsing stopped (no bytes dropped). */
+     * exactly where header parsing stopped (no bytes dropped). The page POSTs
+     * here via fetch() and shows the plain-text reply inline. */
     if (recv_multipart_br(&b, content_type, dir,
                           NULL, 0, HTTPD_MAX_UPLOAD,
                           name, sizeof name, &bytes, err, sizeof err) == 0) {
         record_upload(name, bytes);
         char msg[400];
-        snprintf(msg, sizeof msg, "Saved <b>%s</b> (%llu bytes) to your library.",
+        snprintf(msg, sizeof msg, "Saved %s (%llu bytes) to your library.\n",
                  name, bytes);
-        result_page(1, msg, page, sizeof page);
-        send_response(cfd, "200 OK", "text/html; charset=utf-8", page);
+        send_response(cfd, "200 OK", "text/plain; charset=utf-8", msg);
     } else {
         record_error(err);
-        result_page(0, err, page, sizeof page);
-        send_response(cfd, "400 Bad Request", "text/html; charset=utf-8", page);
+        char msg[HTTPD_ERR_MAX + 16];
+        snprintf(msg, sizeof msg, "%s\n", err);
+        send_response(cfd, "400 Bad Request", "text/plain; charset=utf-8", msg);
     }
 }
 

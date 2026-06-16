@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
 #
-# inkshelf-build.sh — обновить исходники, собрать под PocketBook (ARM) и залить
-# на подключённую читалку.
+# inkshelf-build.sh — pull latest source, cross-compile for PocketBook (ARM),
+# and copy the binary to a connected device.
 #
-# Использование:
-#   ./inkshelf-build.sh           # собрать и залить
-#   ./inkshelf-build.sh --pull    # сначала git pull, потом собрать и залить
-#   ./inkshelf-build.sh --no-copy # собрать, но не копировать на читалку
-#
-# Путь к SDK можно переопределить переменной окружения PB_SDK_ROOT:
-#   PB_SDK_ROOT=/path/to/SDK-B288 ./inkshelf-build.sh
+# Usage:
+#   ./inkshelf-build.sh           # build and copy to device
+#   ./inkshelf-build.sh --pull    # git pull, then build and copy
+#   ./inkshelf-build.sh --no-copy # build only, skip copying to device
 #
 set -euo pipefail
 
-# ---- пути ------------------------------------------------------------------
-# PROJECT определяется по расположению самого скрипта (он лежит в корне репо),
-# поэтому работает из любого клона без правок.
-PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SDK="${PB_SDK_ROOT:-$HOME/pocketbook-sdk/SDK-B288}"
+# ---- paths (edit if your layout differs) ------------------------------------
+PROJECT="${INKSHELF_DIR:-$HOME/inkshelf}"
+SDK="$HOME/pocketbook-sdk/SDK-B288"
 SYSROOT="$SDK/usr/arm-obreey-linux-gnueabi/sysroot"
 CC="$SDK/usr/bin/arm-obreey-linux-gnueabi-gcc"
 CXX="$SDK/usr/bin/arm-obreey-linux-gnueabi-g++"
+CACERT_URL="https://curl.se/ca/cacert.pem"
+CACERT_LOCAL="$PROJECT/assets/cacert.pem"
 
 DO_PULL=0
 DO_COPY=1
@@ -28,28 +25,28 @@ for arg in "$@"; do
   case "$arg" in
     --pull)    DO_PULL=1 ;;
     --no-copy) DO_COPY=0 ;;
-    *) echo "неизвестный аргумент: $arg" >&2; exit 2 ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
-
-if [ ! -x "$CC" ]; then
-  echo "!! кросс-компилятор не найден: $CC" >&2
-  echo "   Укажи путь к SDK через PB_SDK_ROOT=/path/to/SDK-B288 (ветка 6.5" >&2
-  echo "   репозитория pocketbook/SDK_6.3.0). Подробности в README.md." >&2
-  exit 1
-fi
 
 export PATH="$SDK/usr/bin:$PATH"
 cd "$PROJECT"
 
-# ---- 1. (опц.) обновить исходники ------------------------------------------
+# ---- 1. (optional) update source --------------------------------------------
 if [ "$DO_PULL" = 1 ]; then
   echo ">> git pull"
   git pull
   rm -rf build
 fi
 
-# ---- 2. конфигурация (только если build/ ещё нет) --------------------------
+# ---- 2. CA bundle (download if missing or older than 30 days) ---------------
+mkdir -p "$PROJECT/assets"
+if [ ! -f "$CACERT_LOCAL" ] || find "$CACERT_LOCAL" -mtime +30 | grep -q .; then
+  echo ">> refreshing CA bundle"
+  curl -fsSL "$CACERT_URL" -o "$CACERT_LOCAL"
+fi
+
+# ---- 3. cmake configure (only if build/ does not exist yet) -----------------
 if [ ! -d build ]; then
   echo ">> cmake configure"
   cmake -B build \
@@ -60,18 +57,18 @@ if [ ! -d build ]; then
     -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
 fi
 
-# ---- 3. сборка -------------------------------------------------------------
+# ---- 4. build ---------------------------------------------------------------
 echo ">> build"
 cmake --build build
 
 APP="$PROJECT/build/inkshelf.app"
 
-# ---- 4. проверка, что бинарь ARM -------------------------------------------
-echo ">> проверка типа бинаря:"
+# ---- 5. verify ARM binary ---------------------------------------------------
+echo ">> binary check:"
 file "$APP"
-file "$APP" | grep -q "ELF 32-bit.*ARM" || { echo "!! бинарь НЕ ARM"; exit 1; }
+file "$APP" | grep -q "ELF 32-bit.*ARM" || { echo "!! not an ARM binary"; exit 1; }
 
-# ---- 5. (опц.) копирование на читалку --------------------------------------
+# ---- 6. (optional) copy to device -------------------------------------------
 if [ "$DO_COPY" = 1 ]; then
   MOUNT=""
   for d in /media/"$USER"/*/; do
@@ -80,13 +77,16 @@ if [ "$DO_COPY" = 1 ]; then
 
   if [ -n "$MOUNT" ]; then
     cp "$APP" "${MOUNT}applications/"
+    mkdir -p "${MOUNT}system/config"
+    cp "$CACERT_LOCAL" "${MOUNT}system/config/cacert.pem"
     sync
-    echo ">> залито: ${MOUNT}applications/inkshelf.app"
-    echo ">> безопасно извлеки устройство перед отключением."
+    echo ">> deployed: ${MOUNT}applications/inkshelf.app"
+    echo ">> CA bundle: ${MOUNT}system/config/cacert.pem"
+    echo ">> safely eject the device before unplugging."
   else
-    echo "!! читалка не примонтирована под /media/$USER."
-    echo "   Подключи по USB и запусти снова."
+    echo "!! device not mounted under /media/$USER"
+    echo "   Connect via USB, allow storage access on the device, then re-run."
   fi
 fi
 
-echo ">> готово."
+echo ">> done."

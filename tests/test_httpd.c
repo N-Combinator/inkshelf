@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include "httpd.h"
+#include "config.h"
 
 static int g_fail;
 
@@ -312,12 +313,58 @@ static void test_local_ip(void)
     printf("       detected: %s (rc=%d)\n", ip, rc);
 }
 
+/* The PIN authorization predicate: open when no PIN is configured, otherwise
+ * an exact match is required. This is the gate behind POST /drop and /deploy. */
+static void test_pin_auth(void)
+{
+    printf("pin auth:\n");
+    CHECK(httpd_pin_authorized(NULL, NULL) == 1, "no PIN set -> open (NULL/NULL)");
+    CHECK(httpd_pin_authorized("", "whatever") == 1, "empty PIN -> open");
+    CHECK(httpd_pin_authorized("1234", "1234") == 1, "exact match accepted");
+    CHECK(httpd_pin_authorized("1234", "1235") == 0, "wrong PIN rejected");
+    CHECK(httpd_pin_authorized("1234", "") == 0, "empty provided rejected when PIN set");
+    CHECK(httpd_pin_authorized("1234", NULL) == 0, "missing header rejected when PIN set");
+    CHECK(httpd_pin_authorized("1234", "12345") == 0, "prefix is not a match");
+}
+
+/* config.c round-trip against a temp file (never touches the device path). */
+static void test_config(void)
+{
+    printf("config store:\n");
+    char tmpl[] = "/tmp/inkshelf_conf_XXXXXX";
+    int fd = mkstemp(tmpl);
+    CHECK(fd >= 0, "temp config path created");
+    if (fd >= 0) close(fd);
+    unlink(tmpl);                       /* config_set creates it from scratch */
+    config_set_path(tmpl);
+
+    char val[CONFIG_VALUE_MAX];
+    CHECK(config_get("pin", val, sizeof val) == -1, "missing key -> -1");
+    CHECK(val[0] == '\0', "missing key clears out buffer");
+
+    CHECK(config_set("pin", "4271") == 0, "set creates file + key");
+    CHECK(config_get("pin", val, sizeof val) == 0 && strcmp(val, "4271") == 0,
+          "get returns the value just set");
+
+    CHECK(config_set("other", "x") == 0, "second key set");
+    CHECK(config_set("pin", "9999") == 0, "overwrite existing key");
+    CHECK(config_get("pin", val, sizeof val) == 0 && strcmp(val, "9999") == 0,
+          "overwrite wins");
+    CHECK(config_get("other", val, sizeof val) == 0 && strcmp(val, "x") == 0,
+          "unrelated key preserved across overwrite");
+
+    unlink(tmpl);
+    config_set_path(NULL);             /* restore device default */
+}
+
 int main(void)
 {
     test_safe_name();
     test_multipart();
     test_deploy();
     test_local_ip();
+    test_pin_auth();
+    test_config();
     printf("\n%s\n", g_fail ? "TESTS FAILED" : "ALL TESTS PASSED");
     return g_fail ? 1 : 0;
 }

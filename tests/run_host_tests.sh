@@ -131,7 +131,8 @@ echo "== unit tests (httpd: multipart parser + filename safety) =="
 # so the unit test never opens a socket. -pthread satisfies the link.
 # shellcheck disable=SC2086
 "${CC}" ${WARN} ${SAN} -pthread -I"${ROOT}/src" \
-    "${ROOT}/src/httpd.c" "${ROOT}/src/library.c" "${ROOT}/tests/test_httpd.c" \
+    "${ROOT}/src/httpd.c" "${ROOT}/src/library.c" "${ROOT}/src/config.c" \
+    "${ROOT}/tests/test_httpd.c" \
     -o "${OUT}/test_httpd"
 "${OUT}/test_httpd"
 
@@ -143,6 +144,7 @@ echo "== integration smoke (full app, stub InkView+curl) =="
 # shellcheck disable=SC2086
 "${CC}" ${WARN} ${SAN} -I"${ROOT}/src" -I"${INC}" \
     "${ROOT}/src/app.c" \
+    "${ROOT}/src/config.c" \
     "${ROOT}/src/http.c" \
     "${ROOT}/src/library.c" \
     "${ROOT}/src/main.c" \
