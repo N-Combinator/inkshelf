@@ -45,18 +45,24 @@ entries:
 ## Building
 
 inkshelf cross-compiles with the `arm-obreey-linux-gnueabi` toolchain from the
-official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0). The
-SDK toolchain + InkView sysroot are most easily obtained via the SDK Docker
-image.
+official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0). You
+must obtain that SDK yourself — **there is no public prebuilt SDK Docker image
+to pull.** Once you have it, build directly:
 
 ```bash
-# Build inside the SDK Docker image (default).
-./build.sh
-
-# Or, if the toolchain + sysroot are already on PATH / in a sysroot:
-PB_SDK_ROOT=/path/to/sdk NO_DOCKER=1 ./build.sh
+# Direct build (default) — toolchain on PATH, or point at an installed SDK:
+PB_SDK_ROOT=/path/to/sdk ./build.sh
+# (plain ./build.sh works if arm-obreey-linux-gnueabi-gcc is already on PATH)
 ```
 
+If you have wrapped the SDK in your **own** Docker image, build inside it:
+
+```bash
+USE_DOCKER=1 PB_SDK_IMAGE=my-pb-sdk:6.3.0 ./build.sh
+```
+
+`build.sh` preflights both paths and prints exactly what is missing (no
+toolchain, Docker not running, image not found) instead of failing obscurely.
 The artifact is `build/inkshelf.app`.
 
 ### Manual CMake invocation
