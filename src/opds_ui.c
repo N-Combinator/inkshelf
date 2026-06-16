@@ -543,13 +543,20 @@ static screen_t *make_book_detail(const opds_entry *e, const char *base_url)
 
 /* ---- catalog picker (root of the OPDS flow) ------------------------ */
 
+/* Presets must line up index-for-index with the first CATALOG_PRESETS entries
+ * of CATALOG_ITEMS; "Custom URL..." stays last (see catalog_open). */
 static const char *PRESET_URLS[] = {
     "https://standardebooks.org/feeds/opds",
     "https://www.gutenberg.org/ebooks.opds/",
+    /* Flibusta's OPDS lives on flibusta.is (the .su host has no /opds and 404s).
+     * .is can be blocked in some regions; users behind a block can still add a
+     * working mirror via "Custom URL...". */
+    "https://flibusta.is/opds",
 };
 static const ui_list_item CATALOG_ITEMS[] = {
     { "Standard Ebooks",  "standardebooks.org - curated public domain" },
     { "Project Gutenberg", "gutenberg.org - 70k+ free books" },
+    { "Flibusta",          "flibusta.is - large Russian-language library" },
     { "Custom URL...",     "Enter an OPDS catalog address" },
 };
 #define CATALOG_COUNT ((int)(sizeof(CATALOG_ITEMS) / sizeof(CATALOG_ITEMS[0])))
