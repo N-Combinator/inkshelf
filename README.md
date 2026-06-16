@@ -37,18 +37,10 @@ hardware up/down keys and OK, or tap it.
 
 ### OPDS catalog
 
-1. Pick a preset (Project Gutenberg, Flibusta) or **Custom URL...** and type an
-   OPDS feed address with the on-screen keyboard.
-2. Browse the feed; nested catalogs open inline, book entries open a detail
-   view. Tap the filter bar at the top of any list to narrow the loaded entries
-   by title or author. The **Menu** key runs a server-side search whose scope
-   follows where you are: on a catalog's main screen it searches the **whole
-   library** (via the root feed's search endpoint), and inside a category it
-   searches **that category** when the feed advertises its own search link. If
-   the catalog (or that section) offers no search, Menu falls back to filtering
-   the loaded list and says so.
-3. Open a book and confirm download — the file lands in the device library and
-   the PocketBook library is rescanned so it shows up immediately.
+Pick a preset (Project Gutenberg, Flibusta) or **Custom URL...** and type a feed
+address. Browse the catalog, tap the filter bar to narrow a list, or press
+**Menu** to search. Open a book and confirm to download it straight into the
+native PocketBook library.
 
 ### WiFi Book Drop
 
@@ -96,8 +88,8 @@ cd ~/pocketbook-sdk && git checkout 6.5      # SDK-B288/ now exists
 
 The compiler is `SDK-B288/usr/bin/arm-obreey-linux-gnueabi-gcc` and the InkView
 sysroot is `SDK-B288/usr/arm-obreey-linux-gnueabi/sysroot`. **The toolchain
-binaries are Linux x86_64 ELF** — they run on a Linux x86_64 host only, *not*
-natively on macOS (see [Other hosts](#on-macos--other-hosts-docker) below).
+binaries are Linux x86_64 ELF** — they run on a Linux x86_64 host only (not
+natively on macOS; use a `linux/amd64` container there).
 
 ### 2a. One-command build (recommended, Linux x86_64)
 
@@ -117,25 +109,7 @@ expects the SDK at `~/pocketbook-sdk/SDK-B288`; override with
 `PB_SDK_ROOT=/path/to/SDK-B288 ./inkshelf-build.sh`. The reader is auto-detected
 under `/media/$USER/*/` (must expose an `applications/` folder).
 
-### 2b. On macOS / other hosts (Docker)
-
-The toolchain is x86_64-Linux only. On macOS or any non-x86_64-Linux host, build
-inside a `linux/amd64` container with the SDK mounted — no custom image needed:
-
-```bash
-docker run --rm --platform linux/amd64 \
-  -v "$PWD":/work -v /path/to/SDK-B288:/sdk -w /work ubuntu:22.04 \
-  bash -c 'apt-get update -qq && apt-get install -y -qq cmake make >/dev/null \
-           && PB_SDK_ROOT=/sdk ./build.sh'
-```
-
-`build.sh` is the CI/container-friendly wrapper: it preflights and prints exactly
-what's missing (toolchain not found, Docker not running, image absent) instead of
-failing obscurely. On a native Linux x86_64 host you can also just run
-`PB_SDK_ROOT=/path/to/SDK-B288 ./build.sh` directly. (If you prebuilt your own
-SDK image, `USE_DOCKER=1 PB_SDK_IMAGE=<img> ./build.sh` runs inside it.)
-
-### 2c. Manual CMake
+### 2b. Manual CMake
 
 ```bash
 cmake -S . -B build \
