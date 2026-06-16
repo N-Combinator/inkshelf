@@ -25,13 +25,15 @@ PB_TARGET="arm-obreey-linux-gnueabi"
 
 cmake_build() {
     # Fail early with a useful message if the cross toolchain isn't reachable.
+    # Real SDK layout: $PB_SDK_ROOT/usr/bin/arm-obreey-linux-gnueabi-gcc.
     if ! command -v "${PB_TARGET}-gcc" >/dev/null 2>&1 \
-            && [[ ! -x "${PB_SDK_ROOT:-/nonexistent}/bin/${PB_TARGET}-gcc" ]]; then
+            && [[ ! -x "${PB_SDK_ROOT:-/nonexistent}/usr/bin/${PB_TARGET}-gcc" ]]; then
         echo "error: cross compiler '${PB_TARGET}-gcc' not found." >&2
-        echo "       Install the PocketBook SDK_6.3.0 toolchain and either put" >&2
-        echo "       it on PATH or set PB_SDK_ROOT=/path/to/sdk." >&2
-        echo "       SDK: https://github.com/pocketbook/SDK_6.3.0" >&2
-        echo "       (Or build inside your own SDK image: USE_DOCKER=1 PB_SDK_IMAGE=... ./build.sh)" >&2
+        echo "       The SDK lives on the repo's '6.5' branch, not master:" >&2
+        echo "         git clone https://github.com/pocketbook/SDK_6.3.0 && cd SDK_6.3.0 && git checkout 6.5" >&2
+        echo "       then point at the SDK-B288 dir:  PB_SDK_ROOT=/path/to/SDK-B288 ./build.sh" >&2
+        echo "       NOTE: the toolchain is Linux x86_64 — on macOS run this inside a" >&2
+        echo "       linux/amd64 container (see README), it will not run natively." >&2
         exit 1
     fi
     cmake -S "${ROOT}" -B "${BUILD_DIR}" \

@@ -45,25 +45,47 @@ entries:
 ## Building
 
 inkshelf cross-compiles with the `arm-obreey-linux-gnueabi` toolchain from the
-official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0). You
-must obtain that SDK yourself — **there is no public prebuilt SDK Docker image
-to pull.** Once you have it, build directly:
+official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0).
+
+### Get the SDK (it's on the `6.5` branch, not `master`)
+
+The repo's default `master` branch contains **only a README** — the actual SDK
+lives on the `6.5` branch under `SDK-B288/`. (A plain `git clone` still pulls
+~670 MB because it downloads the objects for every branch.)
 
 ```bash
-# Direct build (default) — toolchain on PATH, or point at an installed SDK:
-PB_SDK_ROOT=/path/to/sdk ./build.sh
-# (plain ./build.sh works if arm-obreey-linux-gnueabi-gcc is already on PATH)
+git clone https://github.com/pocketbook/SDK_6.3.0
+cd SDK_6.3.0 && git checkout 6.5      # SDK-B288/ now exists
 ```
 
-If you have wrapped the SDK in your **own** Docker image, build inside it:
+The compiler is `SDK-B288/usr/bin/arm-obreey-linux-gnueabi-gcc` and the InkView
+sysroot is `SDK-B288/usr/arm-obreey-linux-gnueabi/sysroot`.
+
+### Build
+
+**The toolchain binaries are Linux x86_64 ELF.** They run on a Linux x86_64
+host only — *not natively on macOS*. On Linux x86_64:
 
 ```bash
-USE_DOCKER=1 PB_SDK_IMAGE=my-pb-sdk:6.3.0 ./build.sh
+PB_SDK_ROOT=/path/to/SDK-B288 ./build.sh
 ```
 
-`build.sh` preflights both paths and prints exactly what is missing (no
-toolchain, Docker not running, image not found) instead of failing obscurely.
-The artifact is `build/inkshelf.app`.
+On **macOS** (or any non-x86_64-Linux host), build inside a `linux/amd64`
+container with the SDK mounted — no custom image needed:
+
+```bash
+docker run --rm --platform linux/amd64 \
+  -v "$PWD":/work -v /path/to/SDK-B288:/sdk -w /work ubuntu:22.04 \
+  bash -c 'apt-get update -qq && apt-get install -y -qq cmake make >/dev/null \
+           && PB_SDK_ROOT=/sdk ./build.sh'
+```
+
+(If you have prebuilt your own SDK image, `USE_DOCKER=1 PB_SDK_IMAGE=<img>
+./build.sh` runs the build inside it instead.)
+
+`build.sh` preflights and prints exactly what's missing (toolchain not found,
+Docker not running, image absent) instead of failing obscurely. The artifact is
+`build/inkshelf.app`.
 
 ### Manual CMake invocation
 
