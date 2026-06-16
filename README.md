@@ -10,8 +10,7 @@ from the device's application menu.
 
 - [Features](#features)
 - [Using the app](#using-the-app)
-- [Building from source](#building-from-source)
-- [Installing & deploying](#installing--deploying)
+- [Building & installing from source](#building--installing-from-source)
 - [Testing](#testing)
 - [Project layout](#project-layout)
 
@@ -66,7 +65,7 @@ Every upload and over-the-air deploy requires a 4-digit PIN.
   header `X-Inkshelf-PIN: <pin>`. The browser upload page sends it automatically;
   scripts pass `--pin <PIN>`. A missing or wrong PIN returns `403 Forbidden`.
 
-## Building from source
+## Building & installing from source
 
 inkshelf cross-compiles with the `arm-obreey-linux-gnueabi` toolchain from the
 official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0). The
@@ -130,86 +129,26 @@ public OPDS feeds and public-domain books and never sends credentials or writes
 data, so there is nothing for a man-in-the-middle to steal. No CA bundle needs to
 be installed on the device.
 
-## Installing & deploying
+### Installing on the reader
 
-There are three ways to get a built `inkshelf.app` onto a reader. **For a normal
-install, use USB — it needs no jailbreak.** The wireless paths are for the
-fast edit→build→test developer loop.
+**USB (no jailbreak).** Connect the reader over USB (or pull its SD card), copy
+`build/inkshelf.app` into the `applications/` folder, eject, and launch
+**inkshelf** from the Applications menu. `./inkshelf-build.sh` automates this when
+the reader is mounted.
 
-| Method | Cable? | Jailbreak? | Use when |
-|---|---|---|---|
-| [USB copy](#usb-copy-no-jailbreak) | Yes | No | First install / end users |
-| [Wireless `/deploy`](#wireless-over-the-air-no-jailbreak) | No | No | Dev loop on stock firmware |
-| [SSH / netcat](#wireless-via-ssh--netcat-needs-pbjb) | No | Yes (PBJB) | Dev loop with a jailbreak |
-
-### USB copy (no jailbreak)
-
-1. Connect the PocketBook over USB, or pull its SD card.
-2. Copy `build/inkshelf.app` into the `applications/` folder on the device.
-3. Eject, then open **Applications** on the device and launch **inkshelf**.
-
-`./inkshelf-build.sh` automates steps 1–2 when the reader is mounted. No CA
-bundle or extra files are needed (see [TLS note](#a-note-on-https--tls)).
-
-### Wireless over-the-air (no jailbreak)
-
-inkshelf's WiFi-drop server can flash itself. While the **WiFi Book Drop** screen
-is open, `POST /deploy` with the new `.app` as a multipart file overwrites
-`/mnt/ext1/applications/inkshelf.app` and restarts the app — **no SSH, no
-jailbreak, no cable**. The write is atomic (`.part` + `rename`, safe even though
-the app is overwriting its own running binary) and guarded: the part must be
-`application/octet-stream` and ≤ 10 MB.
-
-Use the bundled helper (`inkshelf-build-wifi.sh`), which can build first and then
-deploy in one shot:
+**Wireless (no jailbreak).** With the **WiFi Book Drop** screen open on the
+reader, `inkshelf-build-wifi.sh` (optionally) builds and pushes the binary to the
+running app via `POST /deploy` — atomic and PIN-guarded (use the PIN shown on the
+reader):
 
 ```bash
-./inkshelf-build-wifi.sh 192.168.1.42 --pin 1234        # deploy the existing build
-./inkshelf-build-wifi.sh --find --pin 1234              # auto-detect the reader, then deploy
-./inkshelf-build-wifi.sh --find --build --pin 1234      # build, then deploy
-./inkshelf-build-wifi.sh --find --pull  --pin 1234      # git pull + clean rebuild, then deploy
+./inkshelf-build-wifi.sh --find --pin 1234          # deploy the current build
+./inkshelf-build-wifi.sh --find --pull --pin 1234   # git pull + rebuild, then deploy
 ```
 
-`--build` and `--pull` delegate to `inkshelf-build.sh` (so the build stays a
-single source of truth) and skip the USB copy. `--find` first tries mDNS, then
-scans the local `/24` for the WiFi Book Drop page — no extra tools required. The
-helper resolves the project from its own location and refuses to send anything but
-a verified ARM binary. On failure it says why: `403` (wrong/missing PIN) or no
-connection (reader asleep / screen closed).
-
-> One-shot dev loop: `./inkshelf-build-wifi.sh --find --pull --pin <PIN>`
-> (open WiFi Book Drop on the reader first so the server is listening).
-
-> **Security note:** `/deploy` runs arbitrary uploaded code on the device. The
-> attack surface is bounded — the server only listens while the WiFi Book Drop
-> screen is open, and every `POST` must carry the correct `X-Inkshelf-PIN`
-> header. Treat it as a trusted-LAN developer convenience, not an internet-facing
-> endpoint.
-
-### Wireless via SSH / netcat (needs PBJB)
-
-If your reader has the [PBJB](https://github.com/SquidDev/pbjb) jailbreak (which
-opens SSH/netcat), the `Makefile` can push over WiFi:
-
-```bash
-make deploy    DEVICE=<reader-ip>   # scp over SSH       (primary)
-make deploy-nc DEVICE=<reader-ip>   # netcat receiver.app (no root needed)
-```
-
-- **`make deploy`** copies the `.app` over SSH into `/mnt/ext1/applications/`.
-  PBJB's dropbear is old, so the recipe re-enables `ssh-rsa` for both host key
-  and pubkey auth (modern OpenSSH disables it by default). A running
-  `inkshelf.app` holds its ELF open, so a direct overwrite would fail with
-  `ETXTBSY`; instead it uploads `inkshelf.app.new`, stops any running instance,
-  then renames over the target. Override the port if dropbear is on 2468:
-  `make deploy DEVICE=192.168.1.42 PORT=2468`.
-- **`make deploy-nc`** talks to `receiver.app` (a small on-device `nc -l` script,
-  pattern from the [PocketBook cheatsheet](https://blog.flxzt.net/posts/pb-cheatsheet/))
-  — sends the filename then the binary on port `19991` (`NC_PORT=` to change). If
-  the transfer hangs because your host `nc` doesn't close on EOF, add `-N` (BSD)
-  or `-q0` (traditional) to the second `nc` in the recipe.
-
-After either, relaunch inkshelf from the device's application list.
+`--find` locates the reader via mDNS or a local `/24` scan; `--build`/`--pull`
+delegate to `inkshelf-build.sh`. Jailbroken (PBJB) readers can instead push with
+`make deploy` / `make deploy-nc` (see the `Makefile`).
 
 ## Testing
 

@@ -8,3 +8,6 @@
 .idea/
 *.swp
 .DS_Store
+
+# Downloaded CA bundle (build-time artifact)
+/assets/
