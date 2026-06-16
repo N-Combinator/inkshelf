@@ -13,8 +13,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include <curl/curl.h>
 
@@ -118,69 +116,20 @@ static void set_err(char *err, size_t errsz, const char *msg)
     }
 }
 
-/* A path is usable as a CA bundle only if it is a regular file that is large
- * enough to plausibly hold real certificates. The size floor matters on
- * PocketBook: the firmware's /etc/ssl/certs/ca-certificates.crt exists (so a
- * bare stat() accepts it) but is empty/unusable, and curl then rejects it with
- * CURLE_SSL_CACERT_BADFILE (77). Requiring >= 1 KB skips that trap; the real
- * Mozilla bundle we ship is ~190 KB. */
-static int ca_file_ok(const char *path)
-{
-    struct stat st;
-    return stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size >= 1024;
-}
-
-/* The OPDS presets are HTTPS, but PocketBook firmware ships no usable CA bundle
- * where libcurl looks by default, so TLS verification fails and every catalog
- * load errors out. Find a real bundle: first one shipped next to the .app, then
- * well-known locations (our recommended install path first). If none qualifies
- * we leave curl's default and let the real TLS error surface (and be logged). */
-static const char *http_ca_bundle(void)
-{
-    /* 0) The location confirmed working on real hardware (PocketBook keeps it
-     *    across app reinstalls). Checked first so the known-good path always
-     *    wins; ca_file_ok() still guards against an empty/placeholder file. */
-    if (ca_file_ok("/mnt/ext1/system/config/cacert.pem"))
-        return "/mnt/ext1/system/config/cacert.pem";
-
-    /* 1) cacert.pem sitting in the same directory as the running binary — the
-     *    most self-contained install ("drop both files in applications/"). */
-    static char appca[1100];
-    char exe[1024];
-    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
-    if (n > 0) {
-        exe[n] = '\0';
-        char *slash = strrchr(exe, '/');
-        if (slash) {
-            size_t dirlen = (size_t)(slash - exe) + 1;        /* keep the '/' */
-            if (dirlen + sizeof "cacert.pem" <= sizeof appca) {
-                memcpy(appca, exe, dirlen);
-                memcpy(appca + dirlen, "cacert.pem", sizeof "cacert.pem");
-                if (ca_file_ok(appca)) return appca;
-            }
-        }
-    }
-
-    /* 2) Other well-known fixed locations (the confirmed path is handled at
-     *    step 0 above). */
-    static const char *const paths[] = {
-        "/mnt/ext1/applications/cacert.pem",     /* alongside the apps        */
-        "/ebrmain/config/cacert.pem",            /* PocketBook system area    */
-        "/etc/ssl/certs/ca-certificates.crt",    /* Debian / Ubuntu           */
-        "/etc/ssl/cert.pem",                     /* BSD / musl / Alpine       */
-        "/etc/pki/tls/certs/ca-bundle.crt",      /* RHEL / Fedora             */
-    };
-    for (size_t i = 0; i < sizeof paths / sizeof paths[0]; i++)
-        if (ca_file_ok(paths[i]))
-            return paths[i];
-    return NULL;
-}
-
-/* Apply shared TLS options to a handle (CA bundle if we can find one). */
+/* Apply shared TLS options to a handle.
+ *
+ * PocketBook firmware's libcurl is built against NSS (e.g. NSS/3.30.2), not
+ * OpenSSL. NSS does not honour CURLOPT_CAINFO pointed at a PEM bundle — it
+ * expects an NSS certificate database — so every attempt to supply a CA file
+ * failed the handshake with CURLE_SSL_CACERT_BADFILE (curl 77) no matter how
+ * valid the bundle was. Rather than ship and maintain an NSS cert DB, we turn
+ * off peer/host verification: inkshelf only fetches public OPDS feeds and
+ * public-domain books and never sends credentials or writes anything, so the
+ * MITM exposure is acceptable in exchange for catalogs that actually load. */
 static void http_apply_tls(CURL *curl)
 {
-    const char *ca = http_ca_bundle();
-    if (ca) curl_easy_setopt(curl, CURLOPT_CAINFO, ca);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 }
 
 int http_get_mem(const char *url, char **out_buf, size_t *out_len,
@@ -219,9 +168,8 @@ int http_get_mem(const char *url, char **out_buf, size_t *out_len,
     long status = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
 
-    const char *ca = http_ca_bundle();
-    http_log("  -> rc=%d (%s) | http=%ld | bytes=%zu | ca=%s",
-             rc, curl_easy_strerror(rc), status, m.len, ca ? ca : "(curl default)");
+    http_log("  -> rc=%d (%s) | http=%ld | bytes=%zu | tls=verify-off",
+             rc, curl_easy_strerror(rc), status, m.len);
     http_log_snippet(m.data, m.len);
 
     if (rc != CURLE_OK) {

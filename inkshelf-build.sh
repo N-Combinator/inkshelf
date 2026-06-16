@@ -21,8 +21,6 @@ SDK="${PB_SDK_ROOT:-$HOME/pocketbook-sdk/SDK-B288}"
 SYSROOT="$SDK/usr/arm-obreey-linux-gnueabi/sysroot"
 CC="$SDK/usr/bin/arm-obreey-linux-gnueabi-gcc"
 CXX="$SDK/usr/bin/arm-obreey-linux-gnueabi-g++"
-CACERT_URL="https://curl.se/ca/cacert.pem"
-CACERT_LOCAL="$PROJECT/assets/cacert.pem"
 
 DO_PULL=0
 DO_COPY=1
@@ -51,14 +49,7 @@ if [ "$DO_PULL" = 1 ]; then
   rm -rf build
 fi
 
-# ---- 2. CA bundle (скачать если нет или старше 30 дней) --------------------
-mkdir -p "$PROJECT/assets"
-if [ ! -f "$CACERT_LOCAL" ] || find "$CACERT_LOCAL" -mtime +30 | grep -q .; then
-  echo ">> обновляю CA bundle"
-  curl -fsSL "$CACERT_URL" -o "$CACERT_LOCAL"
-fi
-
-# ---- 3. конфигурация (только если build/ ещё нет) --------------------------
+# ---- 2. конфигурация (только если build/ ещё нет) --------------------------
 if [ ! -d build ]; then
   echo ">> cmake configure"
   cmake -B build \
@@ -69,18 +60,18 @@ if [ ! -d build ]; then
     -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
 fi
 
-# ---- 4. сборка -------------------------------------------------------------
+# ---- 3. сборка -------------------------------------------------------------
 echo ">> build"
 cmake --build build
 
 APP="$PROJECT/build/inkshelf.app"
 
-# ---- 5. проверка, что бинарь ARM -------------------------------------------
+# ---- 4. проверка, что бинарь ARM -------------------------------------------
 echo ">> проверка типа бинаря:"
 file "$APP"
 file "$APP" | grep -q "ELF 32-bit.*ARM" || { echo "!! бинарь НЕ ARM"; exit 1; }
 
-# ---- 6. (опц.) копирование на читалку --------------------------------------
+# ---- 5. (опц.) копирование на читалку --------------------------------------
 if [ "$DO_COPY" = 1 ]; then
   MOUNT=""
   for d in /media/"$USER"/*/; do
@@ -89,11 +80,8 @@ if [ "$DO_COPY" = 1 ]; then
 
   if [ -n "$MOUNT" ]; then
     cp "$APP" "${MOUNT}applications/"
-    mkdir -p "${MOUNT}system/config"
-    cp "$CACERT_LOCAL" "${MOUNT}system/config/cacert.pem"
     sync
     echo ">> залито: ${MOUNT}applications/inkshelf.app"
-    echo ">> CA bundle: ${MOUNT}system/config/cacert.pem"
     echo ">> безопасно извлеки устройство перед отключением."
   else
     echo "!! читалка не примонтирована под /media/$USER."

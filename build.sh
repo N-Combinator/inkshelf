@@ -41,31 +41,7 @@ cmake_build() {
         -DCMAKE_BUILD_TYPE=Release
     cmake --build "${BUILD_DIR}" --parallel
     echo "==> Built: ${BUILD_DIR}/inkshelf.app"
-    stage_dist
-}
-
-# Assemble an install-ready folder: the .app plus the CA bundle it needs for
-# HTTPS OPDS catalogs. PocketBook firmware has no usable CA bundle, so without
-# cacert.pem every HTTPS catalog fails with CURLE_SSL_CACERT_BADFILE (rc 77);
-# inkshelf looks for cacert.pem next to its own binary first.
-stage_dist() {
-    local dist="${BUILD_DIR}/dist"
-    mkdir -p "${dist}"
-    cp -f "${BUILD_DIR}/inkshelf.app" "${dist}/inkshelf.app"
-    if [[ -f "${ROOT}/assets/cacert.pem" ]]; then
-        cp -f "${ROOT}/assets/cacert.pem" "${dist}/cacert.pem"
-    else
-        echo "warning: assets/cacert.pem missing — fetch it with:" >&2
-        echo "           curl -o assets/cacert.pem https://curl.se/ca/cacert.pem" >&2
-    fi
-    cat <<EOF
-==> Install bundle staged in: ${dist}/
-    1) copy inkshelf.app to the reader's  applications/  folder
-    2) install the CA bundle (HTTPS catalogs need it; confirmed device path):
-         curl -o cacert.pem https://curl.se/ca/cacert.pem
-         cp cacert.pem /media/\$USER/<DEVICE_LABEL>/system/config/cacert.pem
-       (a cacert.pem next to inkshelf.app in applications/ also works)
-EOF
+    echo "==> Install: copy it to the reader's  applications/  folder."
 }
 
 if [[ "${USE_DOCKER:-0}" != "1" ]]; then

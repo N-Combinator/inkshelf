@@ -50,9 +50,9 @@ official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0).
 
 ### Quick build
 
-`inkshelf-build.sh` (repo root) does the whole loop in one shot: refresh the CA
-bundle → cmake configure → cross-compile for ARM → verify the output is an ARM
-ELF → copy `inkshelf.app` **and** `cacert.pem` onto a USB-connected reader.
+`inkshelf-build.sh` (repo root) does the whole loop in one shot: cmake configure
+→ cross-compile for ARM → verify the output is an ARM ELF → copy `inkshelf.app`
+onto a USB-connected reader.
 
 ```bash
 chmod +x inkshelf-build.sh        # once, after cloning
@@ -104,19 +104,20 @@ docker run --rm --platform linux/amd64 \
 ./build.sh` runs the build inside it instead.)
 
 `build.sh` preflights and prints exactly what's missing (toolchain not found,
-Docker not running, image absent) instead of failing obscurely. It then stages
-an install-ready folder at `build/dist/` containing **both** `inkshelf.app` and
-`cacert.pem` (the CA bundle, see below).
+Docker not running, image absent) instead of failing obscurely. The artifact is
+`build/inkshelf.app`.
 
-### HTTPS needs a CA bundle
+### HTTPS and TLS verification
 
-PocketBook firmware ships no usable CA certificate bundle, so libcurl rejects
-every HTTPS OPDS catalog with `CURLE_SSL_CACERT_BADFILE` (curl error 77) unless
-a real bundle is present. inkshelf bundles the current Mozilla CA set
-(`assets/cacert.pem`, from <https://curl.se/ca/cacert.pem>) and, at runtime,
-looks for `cacert.pem` next to its own binary first, then at
-`/mnt/ext1/system/config/cacert.pem`. Refresh it periodically by re-downloading
-that file into `assets/`.
+PocketBook firmware's libcurl is built against **NSS**, not OpenSSL. NSS ignores
+`CURLOPT_CAINFO` pointed at a PEM bundle (it expects an NSS certificate
+database), so supplying a CA file always failed the handshake with
+`CURLE_SSL_CACERT_BADFILE` (curl error 77). inkshelf therefore disables TLS
+peer/host verification (`CURLOPT_SSL_VERIFYPEER`/`VERIFYHOST` = 0) instead of
+shipping an NSS trust DB. That is an accepted trade-off for this app: it only
+fetches public OPDS feeds and public-domain books and never sends credentials
+or writes data, so there is nothing for a man-in-the-middle to steal. No CA
+bundle needs to be installed on the device.
 
 ### Manual CMake invocation
 
@@ -130,22 +131,10 @@ cmake --build build --parallel
 ## Installing (no jailbreak)
 
 1. Connect the PocketBook to your computer over USB, or pull its SD card.
-2. Copy `inkshelf.app` (from `build/dist/`) into the `applications/` folder on
-   the device.
-3. Install the CA bundle so HTTPS catalogs work. The confirmed device path is
-   `/mnt/ext1/system/config/cacert.pem` (which shows up as
-   `<mountpoint>/system/config/` over USB):
+2. Copy `build/inkshelf.app` into the `applications/` folder on the device.
+3. Eject, then open **Applications** on the device and launch **inkshelf**.
 
-   ```bash
-   curl -o cacert.pem https://curl.se/ca/cacert.pem
-   # replace PB743G with your device's mount label
-   cp cacert.pem /media/$USER/PB743G/system/config/cacert.pem
-   ```
-
-   (`assets/cacert.pem` in this repo is the same file if you'd rather copy that.
-   Without it, HTTPS OPDS catalogs fail with curl error 77; WiFi book drop still
-   works. inkshelf also accepts a `cacert.pem` sitting next to `inkshelf.app`.)
-4. Eject, then open **Applications** on the device and launch **inkshelf**.
+No CA bundle or extra files are needed (see *HTTPS and TLS verification* above).
 
 ## Testing
 
