@@ -11,8 +11,12 @@
 set -euo pipefail
 
 # ---- paths (edit if your layout differs) ------------------------------------
-PROJECT="${INKSHELF_DIR:-$HOME/inkshelf}"
-SDK="$HOME/pocketbook-sdk/SDK-B288"
+# Default the project to this script's own directory (the repo root) so it works
+# from any clone; override with INKSHELF_DIR. The SDK defaults to the usual
+# location; override with PB_SDK_ROOT (same variable build.sh uses).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT="${INKSHELF_DIR:-$SCRIPT_DIR}"
+SDK="${PB_SDK_ROOT:-$HOME/pocketbook-sdk/SDK-B288}"
 SYSROOT="$SDK/usr/arm-obreey-linux-gnueabi/sysroot"
 CC="$SDK/usr/bin/arm-obreey-linux-gnueabi-gcc"
 CXX="$SDK/usr/bin/arm-obreey-linux-gnueabi-g++"
