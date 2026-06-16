@@ -50,17 +50,28 @@ static ifont *hero_font(void)
     return f;
 }
 
-/* The buttons occupy the lower ~60% of the screen; split that band into
- * BTN_COUNT equal rows with a gap between them. */
+/* Buttons sit just below the about block and are vertically centred in the
+ * remaining space above the footer.  The about block ends at a fixed pixel
+ * offset that matches draw_about()'s layout (48 start + 74 title + 44 tagline
+ * + 30 author + 30 repo + 36 version + 16 divider padding = 278 px). */
+#define ABOUT_END_Y  278
+#define BTN_MAX_H    200    /* cap so buttons are not absurdly tall on hi-res */
+
 static void button_rect(int i, int *x, int *y, int *w, int *h)
 {
     int sw = ScreenWidth();
     int sh = ScreenHeight();
-    int top = (int)(sh * 0.45);                 /* about block gets the top 45% */
-    int bottom = sh - ui_footer_height() - 48;
-    int avail = bottom - top;
+    int zone_top    = ABOUT_END_Y + 32;          /* 32 px gap below divider */
+    int zone_bottom = sh - ui_footer_height() - 48;
+    int avail       = zone_bottom - zone_top;
+
     int bh = (avail - BTN_GAP * (BTN_COUNT - 1)) / BTN_COUNT;
-    if (bh < 1) bh = 1;
+    if (bh > BTN_MAX_H) bh = BTN_MAX_H;
+    if (bh < 1)         bh = 1;
+
+    /* centre the button group vertically within the zone */
+    int group_h = BTN_COUNT * bh + (BTN_COUNT - 1) * BTN_GAP;
+    int top     = zone_top + (avail - group_h) / 2;
 
     *x = MARGIN;
     *w = sw - 2 * MARGIN;
