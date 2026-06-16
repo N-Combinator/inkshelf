@@ -29,6 +29,7 @@
 
 #define URLCAP 1024
 #define SEARCHBAR_H 56        /* on-screen local-filter bar, below the header */
+#define NAV_HINT_H  30        /* scroll-keys memo strip, shown when the list overflows */
 #define SB_PAD      24
 #define FILTER_CAP  80
 
@@ -170,6 +171,12 @@ static void browse_build_items(browse_state *b)
     b->display_count = n;
     ui_list_init(&b->list, b->items, n);
     ui_list_set_top_inset(&b->list, SEARCHBAR_H);
+    /* When the list runs past one screenful, reserve a thin band above the rows
+     * for a memo that the hardware keys scroll/page — there is no on-screen
+     * scrollbar, so otherwise users may not realise there is more below the
+     * fold. Skip it (no wasted space) when everything already fits. */
+    if (b->list.count > b->list.per_page)
+        ui_list_set_top_inset(&b->list, SEARCHBAR_H + NAV_HINT_H);
 }
 
 static void browse_load(browse_state *b, const char *url)
@@ -262,6 +269,20 @@ static void draw_search_bar(const browse_state *b)
     DrawTextRect(bx + 12, by, bw - 24, bh, line, ALIGN_LEFT | VALIGN_MIDDLE);
 }
 
+/* One-line memo drawn just above the list (only when it scrolls) so users
+ * discover the hardware scroll/page keys — the list has no scrollbar. */
+static void draw_scroll_hint(int y)
+{
+    int w = ScreenWidth();
+    const ui_fonts *f = ui_get_fonts();
+    FillArea(0, y, w, NAV_HINT_H, WHITE);
+    SetFont(f->sub, DGRAY);
+    DrawTextRect(SB_PAD, y, w - 2 * SB_PAD, NAV_HINT_H,
+                 "Up/Down keys scroll \xC2\xB7 Prev/Next page",
+                 ALIGN_CENTER | VALIGN_MIDDLE);
+    DrawLine(SB_PAD, y + NAV_HINT_H - 1, w - SB_PAD, y + NAV_HINT_H - 1, LGRAY);
+}
+
 static void browse_show(screen_t *self)
 {
     browse_state *b = self->data;
@@ -283,6 +304,10 @@ static void browse_show(screen_t *self)
     ClearScreen();
     ui_draw_header(title);
     draw_search_bar(b);
+    /* The inset was widened in browse_build_items when the list overflows; that
+     * is exactly when the scroll memo belongs above the rows. */
+    if (b->list.area_y > ui_header_height() + SEARCHBAR_H)
+        draw_scroll_hint(ui_header_height() + SEARCHBAR_H);
     ui_list_draw(&b->list);
     /* Menu runs a server search when this scope has one (whole library at the
      * root, or a category that advertises its own); otherwise Menu filters the
