@@ -137,6 +137,12 @@ static int ca_file_ok(const char *path)
  * we leave curl's default and let the real TLS error surface (and be logged). */
 static const char *http_ca_bundle(void)
 {
+    /* 0) The location confirmed working on real hardware (PocketBook keeps it
+     *    across app reinstalls). Checked first so the known-good path always
+     *    wins; ca_file_ok() still guards against an empty/placeholder file. */
+    if (ca_file_ok("/mnt/ext1/system/config/cacert.pem"))
+        return "/mnt/ext1/system/config/cacert.pem";
+
     /* 1) cacert.pem sitting in the same directory as the running binary — the
      *    most self-contained install ("drop both files in applications/"). */
     static char appca[1100];
@@ -155,9 +161,9 @@ static const char *http_ca_bundle(void)
         }
     }
 
-    /* 2) Well-known fixed locations; our recommended install path first. */
+    /* 2) Other well-known fixed locations (the confirmed path is handled at
+     *    step 0 above). */
     static const char *const paths[] = {
-        "/mnt/ext1/system/config/cacert.pem",   /* recommended install path  */
         "/mnt/ext1/applications/cacert.pem",     /* alongside the apps        */
         "/ebrmain/config/cacert.pem",            /* PocketBook system area    */
         "/etc/ssl/certs/ca-certificates.crt",    /* Debian / Ubuntu           */

@@ -111,10 +111,22 @@ cmake --build build --parallel
 ## Installing (no jailbreak)
 
 1. Connect the PocketBook to your computer over USB, or pull its SD card.
-2. Copy **both** files from `build/dist/` — `inkshelf.app` *and* `cacert.pem` —
-   into the `applications/` folder on the SD card. (Without `cacert.pem`, HTTPS
-   OPDS catalogs fail with curl error 77; WiFi book drop still works.)
-3. Eject, then open **Applications** on the device and launch **inkshelf**.
+2. Copy `inkshelf.app` (from `build/dist/`) into the `applications/` folder on
+   the device.
+3. Install the CA bundle so HTTPS catalogs work. The confirmed device path is
+   `/mnt/ext1/system/config/cacert.pem` (which shows up as
+   `<mountpoint>/system/config/` over USB):
+
+   ```bash
+   curl -o cacert.pem https://curl.se/ca/cacert.pem
+   # replace PB743G with your device's mount label
+   cp cacert.pem /media/$USER/PB743G/system/config/cacert.pem
+   ```
+
+   (`assets/cacert.pem` in this repo is the same file if you'd rather copy that.
+   Without it, HTTPS OPDS catalogs fail with curl error 77; WiFi book drop still
+   works. inkshelf also accepts a `cacert.pem` sitting next to `inkshelf.app`.)
+4. Eject, then open **Applications** on the device and launch **inkshelf**.
 
 ## Testing
 

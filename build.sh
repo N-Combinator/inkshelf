@@ -55,9 +55,17 @@ stage_dist() {
     if [[ -f "${ROOT}/assets/cacert.pem" ]]; then
         cp -f "${ROOT}/assets/cacert.pem" "${dist}/cacert.pem"
     else
-        echo "warning: assets/cacert.pem missing — HTTPS catalogs will fail on device." >&2
+        echo "warning: assets/cacert.pem missing — fetch it with:" >&2
+        echo "           curl -o assets/cacert.pem https://curl.se/ca/cacert.pem" >&2
     fi
-    echo "==> Install bundle: ${dist}/  (copy BOTH files to the reader's applications/ folder)"
+    cat <<EOF
+==> Install bundle staged in: ${dist}/
+    1) copy inkshelf.app to the reader's  applications/  folder
+    2) install the CA bundle (HTTPS catalogs need it; confirmed device path):
+         curl -o cacert.pem https://curl.se/ca/cacert.pem
+         cp cacert.pem /media/\$USER/<DEVICE_LABEL>/system/config/cacert.pem
+       (a cacert.pem next to inkshelf.app in applications/ also works)
+EOF
 }
 
 if [[ "${USE_DOCKER:-0}" != "1" ]]; then
