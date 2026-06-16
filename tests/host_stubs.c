@@ -70,27 +70,27 @@ void InkViewMain(int (*h)(int, int, int))
 {
     g_handler = h;
     h(EVT_INIT, 0, 0);              /* main menu */
-    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> OPDS catalog picker */
-    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> browse preset feed (Project Gutenberg) */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);     /* -> OPDS catalog picker */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);     /* -> browse preset feed (Project Gutenberg) */
     h(EVT_POINTERUP, 120, 96);      /* tap filter bar -> local filter (stub query) */
-    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop the filtered browse */
-    h(EVT_KEYPRESS, KEY_OK, 0);     /* re-open the preset feed, filter cleared */
-    h(EVT_KEYPRESS, KEY_DOWN, 0);   /* select book entry */
-    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> book detail */
-    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> trigger download (stubbed) */
-    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop book detail */
-    h(EVT_KEYPRESS, KEY_MENU, 0);   /* search -> push results browse */
-    h(EVT_KEYPRESS, KEY_DOWN, 0);   /* move to book in results */
-    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> book detail in results */
-    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop results book */
-    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop results browse */
-    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop original browse */
-    h(EVT_KEYPRESS, KEY_BACK, 0);   /* pop catalog picker */
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);   /* pop the filtered browse */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);     /* re-open the preset feed, filter cleared */
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);   /* select book entry */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);     /* -> book detail */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);     /* -> trigger download (stubbed) */
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);   /* pop book detail */
+    h(EVT_KEYPRESS, IV_KEY_MENU, 0);   /* search -> push results browse */
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);   /* move to book in results */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);     /* -> book detail in results */
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);   /* pop results book */
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);   /* pop results browse */
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);   /* pop original browse */
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);   /* pop catalog picker */
     /* Exercise the WiFi Drop screen: enter, refresh (any key), then back. */
-    h(EVT_KEYPRESS, KEY_DOWN, 0);   /* main menu: select WiFi Book Drop */
-    h(EVT_KEYPRESS, KEY_OK, 0);     /* -> WiFi Drop screen (starts stub server) */
-    h(EVT_KEYPRESS, KEY_NEXT, 0);   /* refresh (any non-Back key) */
-    h(EVT_KEYPRESS, KEY_BACK, 0);   /* -> back to main menu (stops stub server) */
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);   /* main menu: select WiFi Book Drop */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);     /* -> WiFi Drop screen (starts stub server) */
+    h(EVT_KEYPRESS, IV_KEY_NEXT, 0);   /* refresh (any non-Back key) */
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);   /* -> back to main menu (stops stub server) */
     h(EVT_EXIT, 0, 0);
 }
 

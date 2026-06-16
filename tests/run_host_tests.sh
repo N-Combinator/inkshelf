@@ -43,7 +43,23 @@ typedef void (*iv_kbdhandler)(char *);
 #define ICON_WARNING 3
 #define ICON_ERROR 4
 enum { EVT_INIT, EVT_SHOW, EVT_KEYPRESS, EVT_EXIT, EVT_POINTERUP, EVT_POINTERDOWN };
-enum { KEY_BACK, KEY_HOME, KEY_OK, KEY_PREVIOUS, KEY_NEXT, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_MENU };
+/* Real InkView key codes (EVT_KEYPRESS par1), matching the device inkview.h.
+ * Using the actual IV_KEY_* values — not a stand-in enum — is what lets the
+ * host gate catch a key-code regression (e.g. switching back to evdev KEY_*). */
+enum {
+    IV_KEY_OK    = 0x0a,
+    IV_KEY_UP    = 0x11,
+    IV_KEY_DOWN  = 0x12,
+    IV_KEY_LEFT  = 0x13,
+    IV_KEY_RIGHT = 0x14,
+    IV_KEY_MENU  = 0x17,
+    IV_KEY_PREV  = 0x18,
+    IV_KEY_NEXT  = 0x19,
+    IV_KEY_HOME  = 0x1a,
+    IV_KEY_BACK  = 0x1b,
+    IV_KEY_PREV2 = 0x1c,
+    IV_KEY_NEXT2 = 0x1d
+};
 int ScreenWidth(void);
 int ScreenHeight(void);
 void ClearScreen(void);
@@ -124,6 +140,16 @@ echo "== unit tests (xml + opds) =="
     "${ROOT}/src/xml.c" "${ROOT}/src/opds.c" "${ROOT}/tests/test_opds.c" \
     -o "${OUT}/test_opds"
 "${OUT}/test_opds"
+
+echo
+echo "== unit tests (ui: hardware-key navigation mapping) =="
+# Links the real ui.c so ui_nav_classify is tested against the real IV_KEY_*
+# codes the device delivers (the bug: it used to match evdev KEY_* instead).
+# shellcheck disable=SC2086
+"${CC}" ${WARN} ${SAN} -I"${ROOT}/src" -I"${INC}" \
+    "${ROOT}/src/ui.c" "${ROOT}/tests/test_ui.c" \
+    -o "${OUT}/test_ui"
+"${OUT}/test_ui"
 
 echo
 echo "== unit tests (httpd: multipart parser + filename safety) =="

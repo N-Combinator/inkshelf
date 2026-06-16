@@ -284,22 +284,28 @@ int ui_list_hit(const ui_list *list, int x, int y)
 
 ui_nav_action ui_nav_classify(int key)
 {
+    /* InkView delivers its own key codes in EVT_KEYPRESS par1 — the IV_KEY_*
+     * constants (see inkview.h), NOT the Linux evdev KEY_* values. They are
+     * different numbers (IV_KEY_UP == 0x11, evdev KEY_UP == 103), so matching
+     * the evdev names here meant no hardware key ever classified and the
+     * buttons did nothing on-device. Match the codes the device actually sends. */
     switch (key) {
-    case KEY_UP:
+    case IV_KEY_UP:
         return UI_NAV_UP;
-    case KEY_DOWN:
+    case IV_KEY_DOWN:
         return UI_NAV_DOWN;
-    case KEY_LEFT:
-    case KEY_PREVIOUS:
+    case IV_KEY_LEFT:
+    case IV_KEY_PREV:
+    case IV_KEY_PREV2:
         return UI_NAV_PAGE_UP;
-    case KEY_RIGHT:
-    case KEY_NEXT:
+    case IV_KEY_RIGHT:
+    case IV_KEY_NEXT:
+    case IV_KEY_NEXT2:
         return UI_NAV_PAGE_DOWN;
-    case KEY_OK:
+    case IV_KEY_OK:
         return UI_NAV_SELECT;
-    case KEY_BACK:
-    case KEY_HOME:
-    case KEY_MENU:
+    case IV_KEY_BACK:
+    case IV_KEY_HOME:
         return UI_NAV_BACK;
     default:
         return UI_NAV_NONE;

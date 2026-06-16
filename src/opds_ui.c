@@ -429,7 +429,10 @@ static int browse_key(screen_t *self, int key)
 {
     browse_state *b = self->data;
 
-    if (key == KEY_MENU) {
+    /* IV_KEY_MENU is the code InkView actually sends for the Menu key (evdev
+     * KEY_MENU is a different number and never matched on-device, so Menu —
+     * the only search trigger — did nothing, at the root feed and everywhere). */
+    if (key == IV_KEY_MENU) {
         if (!b->ok) return 1;
 
         const char *cur = opds_feed_search_href(b->feed);
