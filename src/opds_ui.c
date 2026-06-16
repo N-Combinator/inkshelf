@@ -139,11 +139,24 @@ static void browse_load(browse_state *b, const char *url)
         return;
 
     b->feed = opds_parse(buf, len);
-    free(buf);
     if (!b->feed) {
-        snprintf(b->err, sizeof(b->err), "Could not parse feed");
+        /* Include the start of the payload: if the server returned an HTML
+         * block/error page instead of OPDS XML, this makes it obvious. */
+        char head[60] = "";
+        if (buf) {
+            size_t n = len < sizeof(head) - 1 ? len : sizeof(head) - 1;
+            for (size_t i = 0; i < n; i++) {
+                unsigned char c = (unsigned char)buf[i];
+                head[i] = (c >= 0x20 && c < 0x7f) ? (char)c : ' ';
+            }
+            head[n] = '\0';
+        }
+        snprintf(b->err, sizeof(b->err), "Not valid OPDS (%lu bytes): %s",
+                 (unsigned long)len, head);
+        free(buf);
         return;
     }
+    free(buf);
     browse_build_items(b);
     b->ok = 1;
 }
@@ -161,7 +174,14 @@ static void browse_show(screen_t *self)
                         ? b->feed->title : "OPDS Catalog";
 
     if (!b->ok) {
-        draw_center_message(title, b->err[0] ? b->err : "No data");
+        /* Show the real error, the URL we tried, and where the full request
+         * log lives, so a failure can be diagnosed straight from the screen. */
+        char body[HTTP_ERR_LEN + URLCAP + 96];
+        snprintf(body, sizeof body, "%s\n\nURL: %s\n\nLog: %s",
+                 b->err[0] ? b->err : "No data",
+                 b->url ? b->url : "(none)",
+                 "/mnt/ext1/inkshelf.log");
+        draw_center_message(title, body);
         return;
     }
 

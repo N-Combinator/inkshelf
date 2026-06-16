@@ -182,3 +182,12 @@ CURLcode curl_easy_getinfo(CURL *c, int info, ...)
 
 void curl_easy_cleanup(CURL *c) { free(c); }
 const char *curl_easy_strerror(CURLcode rc) { (void)rc; return "stub"; }
+
+curl_version_info_data *curl_version_info(int v)
+{
+    (void)v;
+    static curl_version_info_data d = {
+        .version = "stub", .features = CURL_VERSION_SSL, .ssl_version = "stub-ssl",
+    };
+    return &d;
+}

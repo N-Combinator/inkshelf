@@ -88,6 +88,14 @@ typedef enum { CURLE_OK = 0 } CURLcode;
 #define CURLOPT_NOPROGRESS 14
 #define CURLOPT_CAINFO 15
 #define CURLINFO_RESPONSE_CODE 100
+#define CURLINFO_EFFECTIVE_URL 101
+#define CURLVERSION_NOW 0
+#define CURL_VERSION_SSL (1<<2)
+typedef struct {
+    const char *version;
+    unsigned int features;
+    const char *ssl_version;
+} curl_version_info_data;
 typedef int (*curl_progress_callback)(void *, double, double, double, double);
 CURL *curl_easy_init(void);
 CURLcode curl_easy_setopt(CURL *, int, ...);
@@ -95,6 +103,7 @@ CURLcode curl_easy_perform(CURL *);
 CURLcode curl_easy_getinfo(CURL *, int, ...);
 void curl_easy_cleanup(CURL *);
 const char *curl_easy_strerror(CURLcode);
+curl_version_info_data *curl_version_info(int);
 #endif
 EOF
 
