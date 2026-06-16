@@ -698,6 +698,31 @@ static void deploy_schedule_restart(void)
     (void)rc;
 }
 
+/* Free the listening port the instant we answer a /deploy, rather than waiting
+ * for the relaunch shell to kill this process (~2s later) and letting the kernel
+ * reclaim the socket. Without this, the freshly relaunched inkshelf races the
+ * old one for port 8080 and the WiFi-drop screen reports "port already in use".
+ *
+ * We run inside serve_thread here, so we must NOT join it (self-join deadlocks):
+ * we just drop the socket and clear `running`, and the accept loop falls out on
+ * its own. Detach self so the exiting thread is reaped without a later join. */
+static void deploy_release_port(void)
+{
+    pthread_mutex_lock(&S.lock);
+    int lfd = S.listen_fd;
+    S.running = 0;
+    S.st.running = 0;
+    S.listen_fd = -1;
+    S.started = 0;
+    pthread_mutex_unlock(&S.lock);
+
+    if (lfd >= 0) {
+        shutdown(lfd, SHUT_RDWR);
+        close(lfd);
+    }
+    pthread_detach(pthread_self());
+}
+
 static void handle_conn(int cfd)
 {
     breader b;
@@ -757,6 +782,9 @@ static void handle_conn(int cfd)
                               dname, sizeof dname, &dbytes, derr, sizeof derr) == 0) {
             send_response(cfd, "200 OK", "text/plain",
                           "Deployed. inkshelf will restart.\n");
+            /* Release :8080 now so the relaunched binary can bind it cleanly,
+             * then schedule the kill+relaunch. */
+            deploy_release_port();
             deploy_schedule_restart();
         } else {
             record_error(derr);
