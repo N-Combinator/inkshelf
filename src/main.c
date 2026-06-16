@@ -14,6 +14,7 @@
 #include "inkview.h"
 
 #include "app.h"
+#include "net.h"
 #include "screens.h"
 #include "ui.h"
 
@@ -22,10 +23,11 @@ static int inkshelf_handler(int type, int par1, int par2)
     switch (type) {
     case EVT_INIT:
         ui_fonts_open();
-        /* Bring WiFi up and keep it held for the session. Without this the
-         * firmware powers the radio down between requests and OPDS/WiFi-drop
-         * drop out mid-use. NetConnect(NULL) is a no-op when already online. */
-        NetConnect(NULL);
+        /* Bring WiFi up at launch. The firmware still powers the radio down on
+         * its idle timer, so this is only the initial connect — each network
+         * path (OPDS, download, WiFi-drop) re-asserts the link via
+         * net_ensure_online() before use to recover from a mid-session drop. */
+        net_ensure_online();
         nav_push(screen_main_menu());   /* paints the first screen */
         return 1;
 

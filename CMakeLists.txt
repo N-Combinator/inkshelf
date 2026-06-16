@@ -18,6 +18,7 @@ add_executable(inkshelf.app
     src/opds.c
     src/opds_ui.c
     src/http.c
+    src/net.c
     src/library.c
     src/download.c
     src/httpd.c

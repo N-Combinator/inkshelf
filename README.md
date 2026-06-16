@@ -10,6 +10,7 @@ from the device's application menu.
 
 - [Features](#features)
 - [Using the app](#using-the-app)
+- [Troubleshooting](#troubleshooting)
 - [Building & installing from source](#building--installing-from-source)
 - [Testing](#testing)
 - [Project layout](#project-layout)
@@ -64,6 +65,28 @@ Every upload and over-the-air deploy requires a 4-digit PIN.
 - **Protocol** — all `POST /drop` and `POST /deploy` requests must include the
   header `X-Inkshelf-PIN: <pin>`. The browser upload page sends it automatically;
   scripts pass `--pin <PIN>`. A missing or wrong PIN returns `403 Forbidden`.
+
+## Troubleshooting
+
+### WiFi drops while the app is open
+
+PocketBook firmware powers the WiFi radio down on an idle timer to save battery,
+so the connection can silently drop after you sit on a screen or read for a
+while — not a bug in inkshelf itself.
+
+inkshelf works around this automatically: it re-asserts the WiFi link before
+each OPDS fetch / download (retrying once the radio is back) and before starting
+the WiFi Book Drop server, so an idle drop usually recovers on its own with at
+most a short pause.
+
+If a request still fails with a connect/DNS/timeout error (shown as
+`curl <n>: …`), the radio was likely mid-reconnect — just **retry the action**;
+it normally succeeds on the second try. If it keeps failing:
+
+- leave and re-enter the screen (or re-open inkshelf) to force a fresh connect;
+- toggle WiFi off/on in the reader's status bar;
+- in the reader's *Settings → Connectivity*, raise or disable the
+  "disconnect when idle" timeout so the firmware stops powering the radio down.
 
 ## Building & installing from source
 

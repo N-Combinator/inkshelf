@@ -17,6 +17,7 @@
 #include <curl/curl.h>
 
 #include "http.h"
+#include "net.h"
 
 #define HTTP_UA       "inkshelf/1.0 (PocketBook)"
 #define HTTP_RETRIES  2            /* extra attempts on transient WiFi errors */
@@ -160,7 +161,13 @@ static CURLcode http_perform_retry(CURL *curl, void (*reset)(void *), void *ud)
     for (int attempt = 0; attempt <= HTTP_RETRIES; attempt++) {
         if (attempt > 0) {
             if (reset) reset(ud);
-            http_log("  retry %d/%d (prev rc=%d)", attempt, HTTP_RETRIES, rc);
+            /* The firmware's idle timer may have powered the radio down mid-
+             * session, so a transient failure is often just "WiFi asleep".
+             * Re-assert the link before retrying instead of burning every
+             * attempt against a dead radio. */
+            net_ensure_online();
+            http_log("  retry %d/%d (prev rc=%d, re-asserted WiFi)",
+                     attempt, HTTP_RETRIES, rc);
         }
         rc = curl_easy_perform(curl);
         if (rc == CURLE_OK || !http_err_transient(rc))

@@ -148,6 +148,7 @@ echo "== integration smoke (full app, stub InkView+curl) =="
     "${ROOT}/src/http.c" \
     "${ROOT}/src/library.c" \
     "${ROOT}/src/main.c" \
+    "${ROOT}/src/net.c" \
     "${ROOT}/src/opds.c" \
     "${ROOT}/src/opds_ui.c" \
     "${ROOT}/src/screens.c" \

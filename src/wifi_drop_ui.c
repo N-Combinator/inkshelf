@@ -20,6 +20,7 @@
 #include "app.h"
 #include "config.h"
 #include "httpd.h"
+#include "net.h"
 #include "ui.h"
 
 /* The SDK's inkview.h defines the numeric-keypad layout constant; the host test
@@ -66,6 +67,9 @@ static void wd_draw(screen_t *self);
 static void wd_try_start(wifi_drop_state *st)
 {
     if (st->started) return;
+    /* Reader may have idled long enough for the firmware to drop WiFi; bring
+     * the radio back before binding so the upload server gets a live link. */
+    net_ensure_online();
     char err[HTTPD_ERR_MAX];
     if (httpd_start(0, err, sizeof err) == 0) {
         st->started = 1;
