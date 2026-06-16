@@ -72,7 +72,8 @@ official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0). The
 output is always a single `build/inkshelf.app` (an ARM 32-bit ELF).
 
 > **TL;DR** — on a Linux x86_64 host with the SDK in place:
-> `./inkshelf-build.sh` builds and copies to a USB-connected reader in one shot.
+> `./inkshelf-build.sh` builds and copies over USB, or
+> `./inkshelf-build-wifi.sh --find --pull --pin <PIN>` builds and deploys over WiFi.
 
 ### 1. Get the SDK (on the `6.5` branch, not `master`)
 
@@ -108,7 +109,25 @@ expects the SDK at `~/pocketbook-sdk/SDK-B288`; override with
 `PB_SDK_ROOT=/path/to/SDK-B288 ./inkshelf-build.sh`. The reader is auto-detected
 under `/media/$USER/*/` (must expose an `applications/` folder).
 
-### 2b. Manual CMake
+### 2b. Wireless build & deploy
+
+`inkshelf-build-wifi.sh` is the USB-free counterpart to 2a: it (optionally) builds
+and pushes the binary straight to the running app over WiFi via `POST /deploy`
+(atomic and PIN-guarded). Open the **WiFi Book Drop** screen on the reader first
+so its server is listening, then:
+
+```bash
+./inkshelf-build-wifi.sh --find --pin 1234          # deploy the current build
+./inkshelf-build-wifi.sh --find --build --pin 1234  # build, then deploy
+./inkshelf-build-wifi.sh --find --pull  --pin 1234  # git pull + clean rebuild, then deploy
+```
+
+`--find` locates the reader via mDNS or a local `/24` scan; `--build`/`--pull`
+delegate to `inkshelf-build.sh` (single source of truth for the build). Use the
+PIN shown on the reader. Jailbroken (PBJB) readers can instead push with
+`make deploy` / `make deploy-nc` (see the `Makefile`).
+
+### 2c. Manual CMake
 
 ```bash
 cmake -S . -B build \
@@ -129,26 +148,12 @@ public OPDS feeds and public-domain books and never sends credentials or writes
 data, so there is nothing for a man-in-the-middle to steal. No CA bundle needs to
 be installed on the device.
 
-### Installing on the reader
+### Installing over USB (no jailbreak)
 
-**USB (no jailbreak).** Connect the reader over USB (or pull its SD card), copy
-`build/inkshelf.app` into the `applications/` folder, eject, and launch
-**inkshelf** from the Applications menu. `./inkshelf-build.sh` automates this when
-the reader is mounted.
-
-**Wireless (no jailbreak).** With the **WiFi Book Drop** screen open on the
-reader, `inkshelf-build-wifi.sh` (optionally) builds and pushes the binary to the
-running app via `POST /deploy` — atomic and PIN-guarded (use the PIN shown on the
-reader):
-
-```bash
-./inkshelf-build-wifi.sh --find --pin 1234          # deploy the current build
-./inkshelf-build-wifi.sh --find --pull --pin 1234   # git pull + rebuild, then deploy
-```
-
-`--find` locates the reader via mDNS or a local `/24` scan; `--build`/`--pull`
-delegate to `inkshelf-build.sh`. Jailbroken (PBJB) readers can instead push with
-`make deploy` / `make deploy-nc` (see the `Makefile`).
+To install without the build script (a prebuilt `.app`, or after a manual CMake
+build), connect the reader over USB or pull its SD card, copy `build/inkshelf.app`
+into the `applications/` folder, eject, and launch **inkshelf** from the
+Applications menu. (2a does this automatically over USB; 2b does it over WiFi.)
 
 ## Testing
 
