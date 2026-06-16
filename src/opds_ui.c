@@ -32,7 +32,7 @@
 #define SB_PAD      24
 #define FILTER_CAP  80
 
-static screen_t *make_browse(const char *url);
+static screen_t *make_browse(const char *url, int is_root);
 static screen_t *make_book_detail(const opds_entry *e, const char *base_url);
 
 /* Header + centred body + footer; used for loading/error states. */
@@ -64,9 +64,17 @@ typedef struct {
     int has_next;
     int ok;
     int loaded;
+    int is_root;            /* this is a catalog's entry feed (root), not a drill-down */
     char filter[FILTER_CAP];   /* local title/author filter ("" = show all) */
     char err[HTTP_ERR_LEN];
 } browse_state;
+
+/* The catalog's root search endpoint, captured the first time its entry feed
+ * loads (see browse_load). g_root_search_valid == 0 means the catalog as a
+ * whole advertises no search, so every screen falls back to local filtering. */
+static char g_root_search_href[URLCAP];
+static char g_root_search_base[URLCAP];
+static int  g_root_search_valid;
 
 static void browse_clear_items(browse_state *b)
 {
@@ -205,6 +213,23 @@ static void browse_load(browse_state *b, const char *url)
     free(buf);
     browse_build_items(b);
     b->ok = 1;
+
+    /* A catalog's entry feed defines the "whole library" search scope. Capture
+     * its search link (if any) so the main screen can search globally and so
+     * deeper feeds know whether the catalog supports search at all. Re-loading
+     * a root (e.g. paging, or opening a different catalog) refreshes it. */
+    if (b->is_root) {
+        const char *sh = opds_feed_search_href(b->feed);
+        if (sh) {
+            snprintf(g_root_search_href, sizeof g_root_search_href, "%s", sh);
+            snprintf(g_root_search_base, sizeof g_root_search_base, "%s", b->url);
+            g_root_search_valid = 1;
+        } else {
+            g_root_search_href[0] = '\0';
+            g_root_search_base[0] = '\0';
+            g_root_search_valid = 0;
+        }
+    }
 }
 
 static void browse_enter(screen_t *self)
@@ -259,9 +284,14 @@ static void browse_show(screen_t *self)
     ui_draw_header(title);
     draw_search_bar(b);
     ui_list_draw(&b->list);
-    ui_draw_footer(opds_feed_search_href(b->feed)
-                   ? "OK open \xC2\xB7 tap bar filters \xC2\xB7 Menu searches catalog \xC2\xB7 Back"
-                   : "OK open \xC2\xB7 tap bar filters list \xC2\xB7 Back");
+    /* Menu runs a server search when this scope has one (whole library at the
+     * root, or a category that advertises its own); otherwise Menu filters the
+     * loaded list, same as the tap bar. */
+    int menu_searches = (b->is_root && g_root_search_valid) ||
+                        opds_feed_search_href(b->feed);
+    ui_draw_footer(menu_searches
+                   ? "OK open \xC2\xB7 tap bar filters \xC2\xB7 Menu searches \xC2\xB7 Back"
+                   : "OK open \xC2\xB7 tap bar / Menu filter list \xC2\xB7 Back");
     ui_flush_full();
 }
 
@@ -292,7 +322,7 @@ static void browse_open_selected(screen_t *self)
     if (opds_entry_is_navigation(e)) {
         const char *h = opds_entry_subfeed_href(e);
         if (h && opds_resolve_url(b->url, h, abs, sizeof(abs)) == 0) {
-            screen_t *c = make_browse(abs);
+            screen_t *c = make_browse(abs, 0);   /* drill-down: a category, not root */
             if (c) nav_push(c);
         }
     } else if (opds_entry_is_book(e)) {
@@ -303,16 +333,25 @@ static void browse_open_selected(screen_t *self)
 
 /* ---- search (async via the on-screen keyboard) -------------------- */
 
-static browse_state *g_search_origin;
 static char g_query[128];
 
-static void do_search(browse_state *b, const char *query)
+/* Endpoint the pending keyboard search will hit. Copied as plain strings at
+ * keyboard-open time (not a screen pointer) so the callback is safe even if the
+ * originating screen is gone, and so the chosen scope — whole library vs the
+ * current category — is locked in when the user starts typing. */
+static char g_search_href[URLCAP];
+static char g_search_base[URLCAP];
+
+/* Resolve `shref` against `base`, follow an OpenSearch description document if
+ * the link isn't already a "{searchTerms}" template, substitute `query`, and
+ * push the results as a new browse screen. Returns 0 on success, -1 if the
+ * catalog's search could not be used. */
+static int run_server_search(const char *shref, const char *base, const char *query)
 {
-    const char *shref = opds_feed_search_href(b->feed);
-    if (!shref) return;
+    if (!shref || !shref[0] || !base || !base[0]) return -1;
 
     char sabs[URLCAP];
-    if (opds_resolve_url(b->url, shref, sabs, sizeof(sabs)) != 0) return;
+    if (opds_resolve_url(base, shref, sabs, sizeof(sabs)) != 0) return -1;
 
     char tmpl[URLCAP];
     if (strstr(sabs, "{searchTerms}")) {
@@ -326,34 +365,35 @@ static void do_search(browse_state *b, const char *query)
         char err[HTTP_ERR_LEN];
         if (http_get_mem(sabs, &buf, &len, err, sizeof(err)) != 0) {
             Message(ICON_WARNING, "Search", err, 2500);
-            return;
+            return -1;
         }
         char *t = opds_opensearch_template(buf, len);
         free(buf);
         if (!t) {
             Message(ICON_INFORMATION, "Search", "Catalog search not supported.", 2500);
-            return;
+            return -1;
         }
         int rc = opds_resolve_url(sabs, t, tmpl, sizeof(tmpl));
         free(t);
-        if (rc != 0) return;
+        if (rc != 0) return -1;
     }
 
     char *qurl = opds_apply_search_template(tmpl, query);
-    if (!qurl) return;
+    if (!qurl) return -1;
     char absq[URLCAP];
-    int rc = opds_resolve_url(b->url, qurl, absq, sizeof(absq));
+    int rc = opds_resolve_url(base, qurl, absq, sizeof(absq));
     free(qurl);
-    if (rc != 0) return;
+    if (rc != 0) return -1;
 
-    screen_t *c = make_browse(absq);
+    screen_t *c = make_browse(absq, 0);   /* results are their own feed, not root */
     if (c) nav_push(c);
+    return 0;
 }
 
 static void search_kbd_cb(char *text)
 {
-    if (!text || !text[0] || !g_search_origin) return;
-    do_search(g_search_origin, text);
+    if (!text || !text[0]) return;
+    run_server_search(g_search_href, g_search_base, text);
 }
 
 /* ---- local filter (client-side, works on every catalog) ----------- */
@@ -390,13 +430,35 @@ static int browse_key(screen_t *self, int key)
     browse_state *b = self->data;
 
     if (key == KEY_MENU) {
-        if (b->ok && opds_feed_search_href(b->feed)) {
-            g_search_origin = b;
+        if (!b->ok) return 1;
+
+        const char *cur = opds_feed_search_href(b->feed);
+
+        if (b->is_root && g_root_search_valid) {
+            /* Main screen: search the whole library via the catalog's root
+             * search endpoint. */
+            snprintf(g_search_href, sizeof g_search_href, "%s", g_root_search_href);
+            snprintf(g_search_base, sizeof g_search_base, "%s", g_root_search_base);
             g_query[0] = '\0';
-            OpenKeyboard("Search catalog", g_query,
+            OpenKeyboard("Search whole library", g_query,
+                         (int)sizeof(g_query) - 1, 0, search_kbd_cb);
+        } else if (cur) {
+            /* Inside a category that advertises its own search: scope the query
+             * to this feed (whatever the catalog assigns to its search link). */
+            snprintf(g_search_href, sizeof g_search_href, "%s", cur);
+            snprintf(g_search_base, sizeof g_search_base, "%s", b->url);
+            g_query[0] = '\0';
+            OpenKeyboard("Search this category", g_query,
                          (int)sizeof(g_query) - 1, 0, search_kbd_cb);
         } else {
-            Message(ICON_INFORMATION, "inkshelf", "Search not available here.", 2000);
+            /* No server-side search for this scope — fall back to filtering the
+             * already-loaded entries, telling the user that's what's happening. */
+            Message(ICON_INFORMATION, "Search",
+                    g_root_search_valid
+                        ? "This section has no search. Filtering the loaded list instead."
+                        : "This catalog has no search. Filtering the loaded list instead.",
+                    2500);
+            filter_open(b, self);
         }
         return 1;
     }
@@ -455,7 +517,6 @@ static void browse_destroy(screen_t *self)
 {
     browse_state *b = self->data;
     if (b) {
-        if (g_search_origin == b) g_search_origin = NULL;
         if (g_filter_origin == b) { g_filter_origin = NULL; g_filter_screen = NULL; }
         free(b->url);
         if (b->feed) opds_feed_free(b->feed);
@@ -465,7 +526,7 @@ static void browse_destroy(screen_t *self)
     free(self);
 }
 
-static screen_t *make_browse(const char *url)
+static screen_t *make_browse(const char *url, int is_root)
 {
     screen_t *s = calloc(1, sizeof(*s));
     browse_state *b = calloc(1, sizeof(*b));
@@ -473,6 +534,7 @@ static screen_t *make_browse(const char *url)
 
     b->url = strdup(url);
     if (!b->url) { free(s); free(b); return NULL; }
+    b->is_root = is_root;
 
     s->title = "OPDS Catalog";
     s->data = b;
@@ -701,14 +763,14 @@ static char g_custom_url[URLCAP];
 static void custom_kbd_cb(char *text)
 {
     if (!text || !text[0]) return;
-    screen_t *c = make_browse(text);
+    screen_t *c = make_browse(text, 1);   /* user's chosen entry feed = root */
     if (c) nav_push(c);
 }
 
 static void catalog_open(int idx)
 {
     if (idx >= 0 && idx < CATALOG_PRESETS) {
-        screen_t *c = make_browse(PRESET_URLS[idx]);
+        screen_t *c = make_browse(PRESET_URLS[idx], 1);   /* preset entry = root */
         if (c) nav_push(c);
     } else if (idx == CATALOG_COUNT - 1) {
         g_custom_url[0] = '\0';
