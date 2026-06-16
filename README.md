@@ -48,6 +48,25 @@ entries:
 inkshelf cross-compiles with the `arm-obreey-linux-gnueabi` toolchain from the
 official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0).
 
+### Quick build
+
+`inkshelf-build.sh` (repo root) does the whole loop in one shot: refresh the CA
+bundle → cmake configure → cross-compile for ARM → verify the output is an ARM
+ELF → copy `inkshelf.app` **and** `cacert.pem` onto a USB-connected reader.
+
+```bash
+chmod +x inkshelf-build.sh        # once, after cloning
+./inkshelf-build.sh               # build + deploy to the connected reader
+./inkshelf-build.sh --pull        # git pull first, then a clean rebuild + deploy
+./inkshelf-build.sh --no-copy     # build only, don't touch the device
+```
+
+It finds the project from its own location, so it works from any clone. It
+expects the SDK at `~/pocketbook-sdk/SDK-B288`; override with
+`PB_SDK_ROOT=/path/to/SDK-B288 ./inkshelf-build.sh` (see *Get the SDK* below).
+The device is auto-detected under `/media/$USER/*/` (must expose an
+`applications/` folder). For CI or container builds, use `build.sh` instead.
+
 ### Get the SDK (it's on the `6.5` branch, not `master`)
 
 The repo's default `master` branch contains **only a README** — the actual SDK
