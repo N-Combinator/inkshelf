@@ -43,7 +43,7 @@ typedef void (*iv_kbdhandler)(char *);
 #define ICON_WARNING 3
 #define ICON_ERROR 4
 enum { EVT_INIT, EVT_SHOW, EVT_KEYPRESS, EVT_EXIT, EVT_POINTERUP, EVT_POINTERDOWN };
-enum { KEY_BACK, KEY_HOME, KEY_OK, KEY_PREV, KEY_NEXT, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_MENU };
+enum { KEY_BACK, KEY_HOME, KEY_OK, KEY_PREVIOUS, KEY_NEXT, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_MENU };
 int ScreenWidth(void);
 int ScreenHeight(void);
 void ClearScreen(void);

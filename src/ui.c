@@ -193,7 +193,7 @@ ui_nav_action ui_nav_classify(int key)
     case KEY_DOWN:
         return UI_NAV_DOWN;
     case KEY_LEFT:
-    case KEY_PREV:
+    case KEY_PREVIOUS:
         return UI_NAV_PAGE_UP;
     case KEY_RIGHT:
     case KEY_NEXT:
