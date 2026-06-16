@@ -35,6 +35,7 @@
 #include "library.h"
 
 #define HTTPD_RDBUF       65536
+#define HTTPD_WRBUF       (1024 * 1024)   /* stdio write buffer for uploads */
 #define HTTPD_LINE_MAX    2048
 #define HTTPD_MAX_UPLOAD  (512ULL * 1024 * 1024)  /* refuse books over 512 MB */
 #define HTTPD_BOUNDARY_MAX 200
@@ -403,17 +404,29 @@ static int recv_multipart_br(breader *bp,
     FILE *fp = fopen(tmp, "wb");
     if (!fp) { set_err(err, errsz, "cannot open output file"); return -1; }
 
+    /* Stock stdio flushes every BUFSIZ (~4-8 KB), so a multi-MB book turns into
+     * thousands of tiny writes to the reader's flash and uploads crawl. Give the
+     * stream a large fully-buffered (_IOFBF) buffer so the 64 KB read chunks
+     * coalesce into a few big flash writes. Best-effort: if the allocation fails
+     * we just keep stdio's default buffer. The buffer must outlive the stream,
+     * so it is freed only after fclose(). */
+    char *wrbuf = malloc(HTTPD_WRBUF);
+    if (wrbuf) setvbuf(fp, wrbuf, _IOFBF, HTTPD_WRBUF);
+
     unsigned long long written = 0;
     if (consume_to_delim(bp, delim, (size_t)dl, pi, fp, &written, err, errsz) != 0) {
         fclose(fp);
+        free(wrbuf);
         remove(tmp);
         return -1;
     }
     if (fclose(fp) != 0) {
+        free(wrbuf);
         remove(tmp);
         set_err(err, errsz, "write failed on close");
         return -1;
     }
+    free(wrbuf);
     if (written == 0) {
         remove(tmp);
         set_err(err, errsz, "empty file");
