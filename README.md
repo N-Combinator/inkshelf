@@ -138,6 +138,40 @@ cmake --build build --parallel
 
 No CA bundle or extra files are needed (see *HTTPS and TLS verification* above).
 
+## Wireless deploy (developer loop — needs PBJB)
+
+For the USB-free edit→build→test loop, the `Makefile` can push a freshly built
+`build/inkshelf.app` to a reader over WiFi. **This path requires the
+[PBJB](https://github.com/SquidDev/pbjb) jailbreak** (it opens SSH/netcat on the
+device); plain end-user installs stay USB-only and jailbreak-free, as above.
+
+```bash
+make build                       # cross-compile (same as ./build.sh; needs the SDK)
+make test                        # host test gate (no SDK / no device)
+make deploy    DEVICE=<reader-ip># scp over SSH  (primary)
+make deploy-nc DEVICE=<reader-ip># netcat receiver.app  (no root needed)
+```
+
+**`make deploy`** copies the `.app` over SSH into `/mnt/ext1/applications/`.
+PBJB's dropbear is old, so the recipe re-enables `ssh-rsa` for both the host key
+and pubkey auth (modern OpenSSH disables it by default). A running `inkshelf.app`
+holds its ELF open, so writing straight over it would fail with `ETXTBSY`;
+instead it uploads to `inkshelf.app.new`, stops any running instance, then
+renames over the target — safe even while the app is on screen. Overrides:
+
+```bash
+make deploy DEVICE=192.168.1.42 PORT=2468 SSH_USER=root   # dropbear sometimes listens on 2468
+```
+
+**`make deploy-nc`** is the no-root alternative: it talks to `receiver.app` (a
+small `nc -l` shell script living on the device, pattern from the
+[PocketBook cheatsheet](https://blog.flxzt.net/posts/pb-cheatsheet/)) — sends the
+filename, then the binary, on port `19991` (`NC_PORT=` to change). If the binary
+transfer hangs because your host `nc` doesn't close on EOF, add `-N` (BSD nc) or
+`-q0` (traditional) to the second `nc` in the recipe.
+
+After either deploy, relaunch inkshelf from the device's application list.
+
 ## Testing
 
 The parsing and server logic is covered by a host test gate that needs
@@ -173,6 +207,7 @@ src/
 cmake/              arm-obreey cross-compile toolchain file
 tests/              host test gate (no SDK / no network)
 build.sh            Docker / direct build wrapper
+Makefile            build/test + wireless deploy (make deploy / deploy-nc)
 ```
 
 ## License
