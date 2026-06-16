@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include <curl/curl.h>
 
@@ -51,6 +52,34 @@ static void set_err(char *err, size_t errsz, const char *msg)
     }
 }
 
+/* The OPDS presets are HTTPS, but PocketBook firmware does not put a CA bundle
+ * where libcurl looks by default, so TLS verification fails ("unable to get
+ * local issuer certificate") and every catalog load errors out. Point curl at
+ * whichever well-known bundle actually exists; if none does we leave curl's
+ * own default in place and let the real TLS error surface to the user. */
+static const char *http_ca_bundle(void)
+{
+    static const char *const paths[] = {
+        "/mnt/ext1/system/config/cacert.pem",   /* PocketBook user partition */
+        "/ebrmain/config/cacert.pem",            /* PocketBook system area    */
+        "/etc/ssl/certs/ca-certificates.crt",    /* Debian / Ubuntu           */
+        "/etc/ssl/cert.pem",                     /* BSD / musl / Alpine       */
+        "/etc/pki/tls/certs/ca-bundle.crt",      /* RHEL / Fedora             */
+    };
+    struct stat st;
+    for (size_t i = 0; i < sizeof paths / sizeof paths[0]; i++)
+        if (stat(paths[i], &st) == 0 && S_ISREG(st.st_mode))
+            return paths[i];
+    return NULL;
+}
+
+/* Apply shared TLS options to a handle (CA bundle if we can find one). */
+static void http_apply_tls(CURL *curl)
+{
+    const char *ca = http_ca_bundle();
+    if (ca) curl_easy_setopt(curl, CURLOPT_CAINFO, ca);
+}
+
 int http_get_mem(const char *url, char **out_buf, size_t *out_len,
                  char *err, size_t errsz)
 {
@@ -78,6 +107,7 @@ int http_get_mem(const char *url, char **out_buf, size_t *out_len,
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curlerr);
     curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");   /* allow gzip */
+    http_apply_tls(curl);
 
     CURLcode rc = curl_easy_perform(curl);
     long status = 0;
@@ -154,6 +184,7 @@ int http_download_file(const char *url, const char *dest_path,
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curlerr);
+    http_apply_tls(curl);
 
     CURLcode rc = curl_easy_perform(curl);
     long status = 0;

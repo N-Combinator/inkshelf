@@ -86,6 +86,7 @@ typedef enum { CURLE_OK = 0 } CURLcode;
 #define CURLOPT_PROGRESSFUNCTION 12
 #define CURLOPT_PROGRESSDATA 13
 #define CURLOPT_NOPROGRESS 14
+#define CURLOPT_CAINFO 15
 #define CURLINFO_RESPONSE_CODE 100
 typedef int (*curl_progress_callback)(void *, double, double, double, double);
 CURL *curl_easy_init(void);
