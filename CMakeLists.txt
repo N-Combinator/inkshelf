@@ -28,6 +28,21 @@ target_include_directories(inkshelf.app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# Embed the build version (latest git tag, else short commit hash) so the main
+# screen's about block can show it. Passed as a string literal; screens.c keeps
+# a "dev" fallback for builds outside a git checkout (e.g. the host test gate).
+execute_process(
+    COMMAND git describe --tags --always
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT GIT_VERSION)
+    set(GIT_VERSION "dev")
+endif()
+target_compile_definitions(inkshelf.app PRIVATE INKSHELF_VERSION="${GIT_VERSION}")
+
 # The WiFi-drop upload server (httpd.c) runs its accept loop on a pthread.
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)

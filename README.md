@@ -22,8 +22,9 @@ from the device's application menu.
 
 ## Using it
 
-Launch **inkshelf** from the device's Applications menu. The main menu has two
-entries:
+Launch **inkshelf** from the device's Applications menu. The home screen shows
+an about block (name, version, repo) above two large buttons — pick one with the
+hardware up/down keys and OK, or tap it:
 
 ### OPDS Catalog
 1. Pick a preset (Project Gutenberg, Flibusta) or **Custom URL...** and type an
