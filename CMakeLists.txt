@@ -11,6 +11,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_executable(inkshelf.app
     src/main.c
     src/app.c
+    src/config.c
     src/ui.c
     src/screens.c
     src/xml.c

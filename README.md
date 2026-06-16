@@ -45,6 +45,27 @@ entries:
 3. Uploaded books are written to the device library and appear in the native
    PocketBook library. Leave the screen to stop the server.
 
+### PIN protection
+
+Every upload and OTA-deploy request requires a 4-digit PIN.
+
+- **First visit** — if no PIN has been saved yet, the screen prompts you to set
+  one via the numeric keyboard before the server starts. The PIN is shown on the
+  screen next to the URL so you can type it into the browser.
+- **Change PIN** — tap the *Change PIN* button (or press OK) while the server is
+  running.
+- **Storage** — the PIN is saved in `/mnt/ext1/system/config/inkshelf.conf` and
+  reloaded automatically on each visit.
+- **Protocol** — all `POST /drop` and `POST /deploy` requests must include the
+  header `X-Inkshelf-PIN: <pin>`.  The browser upload page handles this
+  automatically via `fetch()`.  Scripts must pass `--pin <PIN>`:
+
+```bash
+./inkshelf-deploy-wifi.sh 192.168.1.42 --pin 5678
+```
+
+A missing or wrong PIN returns `403 Forbidden`.
+
 ## Building
 
 inkshelf cross-compiles with the `arm-obreey-linux-gnueabi` toolchain from the
@@ -185,16 +206,16 @@ guarded: the part must be `application/octet-stream` and ≤ 10 MB.
 The repo ships `inkshelf-deploy-wifi.sh` for this:
 
 ```bash
-./inkshelf-deploy-wifi.sh 192.168.1.42        # HTTP POST to /deploy (app must be on the WiFi-drop screen)
-./inkshelf-deploy-wifi.sh 192.168.1.42 --ssh  # SCP fallback (needs sshd/PBJB)
-./inkshelf-deploy-wifi.sh --find              # discover the reader's IP on the LAN
+./inkshelf-deploy-wifi.sh 192.168.1.42 --pin 5678        # HTTP POST to /deploy
+./inkshelf-deploy-wifi.sh 192.168.1.42 --ssh             # SCP fallback (needs sshd/PBJB)
+./inkshelf-deploy-wifi.sh --find --pin 5678              # auto-detect IP, then deploy
 ```
 
-> **Security note:** `/deploy` runs arbitrary uploaded code on the device. The
-> attack surface is bounded — the server only listens while you have the WiFi
-> Book Drop screen open — but treat it as a trusted-LAN developer convenience,
-> not something to leave exposed. The mime/size checks are sanity gates, not
-> authentication.
+> **Security note:** `/deploy` runs arbitrary uploaded code on the device.
+> The attack surface is bounded — the server only listens while you have the
+> WiFi Book Drop screen open, and every `POST` must supply the correct
+> `X-Inkshelf-PIN` header (set on first launch). Treat it as a trusted-LAN
+> developer convenience, not an internet-facing endpoint.
 
 ## Testing
 
@@ -228,6 +249,7 @@ src/
   download.{c,h}    book download to the device library
   library.{c,h}     library paths + PocketBook library rescan
   httpd.{c,h}       WiFi-drop embedded HTTP upload server
+  config.{c,h}      flat key=value config (PIN storage, /mnt/ext1/system/config/inkshelf.conf)
 cmake/              arm-obreey cross-compile toolchain file
 tests/              host test gate (no SDK / no network)
 build.sh            Docker / direct build wrapper
