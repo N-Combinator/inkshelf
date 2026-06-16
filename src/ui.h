@@ -1,10 +1,11 @@
 /*
- * ui.h — InkView drawing helpers and a reusable scrollable list widget.
+ * ui.h — InkView drawing helpers and a reusable list widget.
  *
  * Keeps all the e-ink layout/painting concerns in one place so screens can
  * be written in terms of "draw a header", "draw this list", "draw a footer
  * hint" rather than juggling raw InkView coordinates. The list widget backs
- * the main menu and, later, the OPDS results browser.
+ * the main menu and, later, the OPDS results browser. It pages through long
+ * lists with the hardware page-turn keys; there is no on-screen scrollbar.
  */
 
 #ifndef INKSHELF_UI_H
@@ -49,7 +50,7 @@ int  ui_action_button_top(void);
 /* Push the whole framebuffer to the panel (full e-ink refresh). */
 void ui_flush_full(void);
 
-/* ---- Scrollable list widget ---------------------------------------- */
+/* ---- List widget --------------------------------------------------- */
 
 typedef struct {
     const char *primary;     /* required: main line */

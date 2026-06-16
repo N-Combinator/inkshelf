@@ -13,13 +13,12 @@ from the device's application menu.
   presets for [Project Gutenberg](https://www.gutenberg.org) and
   [Flibusta](https://flibusta.is/opds) (Russian-language), plus a custom-URL
   entry via the on-screen keyboard. Every list has a tap-to-filter bar (by
-  title/author) and a scrollbar for long catalogs.
+  title/author); long catalogs page with the hardware page-turn keys.
 - **WiFi book drop** — starts a tiny HTTP server on the reader; from a PC or
   phone on the same WiFi you open the shown URL and upload `epub`/`fb2` files
   that then appear in the native PocketBook library.
 - **Minimal e-ink UI** drawn directly with the InkView API — a nav-stack of
-  screens with a reusable scrollable list widget, mapped onto the PocketBook
-  key matrix.
+  screens with a reusable list widget, mapped onto the PocketBook key matrix.
 
 ## Using it
 
@@ -219,7 +218,7 @@ It runs, under AddressSanitizer + UBSan:
 src/
   main.c            event-loop entry point
   app.{c,h}         screen nav-stack (push/pop/repaint, key/pointer dispatch)
-  ui.{c,h}          fonts, header/footer chrome, scrollable list widget
+  ui.{c,h}          fonts, header/footer chrome, paged list widget
   screens.{c,h}     main menu + screen wiring
   opds.{c,h}        OPDS Atom feed model + link/entry classification
   xml.{c,h}         dependency-free SAX-style XML parser
