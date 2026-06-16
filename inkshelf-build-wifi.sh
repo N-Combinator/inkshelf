@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 #
-# inkshelf-deploy-wifi.sh — deploy inkshelf.app to PocketBook over WiFi.
+# inkshelf-build-wifi.sh — (optionally build, then) deploy inkshelf.app to a
+# PocketBook over WiFi.
 #
 # Usage:
-#   ./inkshelf-deploy-wifi.sh <IP>             # deploy via HTTP /deploy endpoint
-#   ./inkshelf-deploy-wifi.sh <IP> --pin 1234  # ...with the PIN shown on the reader
-#   ./inkshelf-deploy-wifi.sh <IP> --ssh       # deploy via SSH/SCP (needs sshd/PBJB)
-#   ./inkshelf-deploy-wifi.sh --find           # auto-detect device IP, then deploy
+#   ./inkshelf-build-wifi.sh <IP>             # deploy the existing build via HTTP /deploy
+#   ./inkshelf-build-wifi.sh <IP> --pin 1234  # ...with the PIN shown on the reader
+#   ./inkshelf-build-wifi.sh <IP> --build     # build first (inkshelf-build.sh), then deploy
+#   ./inkshelf-build-wifi.sh <IP> --pull      # git pull + clean rebuild, then deploy
+#   ./inkshelf-build-wifi.sh <IP> --ssh       # deploy via SSH/SCP (needs sshd/PBJB)
+#   ./inkshelf-build-wifi.sh --find           # auto-detect device IP, then deploy
 #
-# Example:
-#   ./inkshelf-deploy-wifi.sh 192.168.1.42 --pin 1234
+# Example (one-shot pull -> build -> wireless deploy):
+#   ./inkshelf-build-wifi.sh --find --pull --pin 1234
 #
 # The project directory defaults to the directory this script lives in (the repo
 # root), so it works from any clone location with no setup. Override with
 # INKSHELF_DIR if the built binary lives elsewhere:
-#   INKSHELF_DIR=~/projects/inkshelf ./inkshelf-deploy-wifi.sh 192.168.1.42
+#   INKSHELF_DIR=~/projects/inkshelf ./inkshelf-build-wifi.sh 192.168.1.42
 #
 set -euo pipefail
 
@@ -70,12 +73,14 @@ find_device() {
 
 # ---- parse arguments --------------------------------------------------------
 if [ $# -eq 0 ]; then
-  echo "Usage: $0 <IP> [--pin N] [--ssh] | --find [--pin N] [--ssh]"
+  echo "Usage: $0 {<IP> | --find} [--pull | --build] [--pin N] [--ssh]"
   exit 1
 fi
 
 USE_SSH=0
 DO_FIND=0
+DO_BUILD=0
+DO_PULL=0
 PB_IP=""
 PIN=""
 
@@ -86,6 +91,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --find)   DO_FIND=1 ;;
     --ssh)    USE_SSH=1 ;;
+    --build)  DO_BUILD=1 ;;
+    --pull)   DO_PULL=1; DO_BUILD=1 ;;   # --pull implies a (clean) build
     --pin)    shift; PIN="${1:-}" ;;
     --pin=*)  PIN="${1#--pin=}" ;;
     -*)       echo "!! unknown option: $1" >&2; exit 2 ;;
@@ -105,9 +112,24 @@ if [ -z "$PB_IP" ]; then
   exit 1
 fi
 
+# ---- optional pull + build --------------------------------------------------
+# Delegate to inkshelf-build.sh so the build stays a single source of truth;
+# --no-copy because the (wireless) deploy below is this script's job.
+if [ "$DO_BUILD" = 1 ]; then
+  BUILD_SH="$SCRIPT_DIR/inkshelf-build.sh"
+  [ -x "$BUILD_SH" ] || { echo "!! $BUILD_SH not found or not executable" >&2; exit 1; }
+  if [ "$DO_PULL" = 1 ]; then
+    echo ">> pull + clean rebuild via $(basename "$BUILD_SH")..."
+    "$BUILD_SH" --pull --no-copy
+  else
+    echo ">> build via $(basename "$BUILD_SH")..."
+    "$BUILD_SH" --no-copy
+  fi
+fi
+
 # ---- verify binary exists and is ARM ----------------------------------------
 if [ ! -f "$APP" ]; then
-  echo "!! $APP not found — run ./inkshelf-build.sh (or set INKSHELF_DIR) first" >&2
+  echo "!! $APP not found — pass --build (or --pull) to build it first" >&2
   exit 1
 fi
 file "$APP" | grep -q "ELF 32-bit.*ARM" || { echo "!! not an ARM binary — rebuild first" >&2; exit 1; }

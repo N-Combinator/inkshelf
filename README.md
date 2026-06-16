@@ -160,19 +160,24 @@ jailbreak, no cable**. The write is atomic (`.part` + `rename`, safe even though
 the app is overwriting its own running binary) and guarded: the part must be
 `application/octet-stream` and ≤ 10 MB.
 
-Use the bundled helper (`inkshelf-deploy-wifi.sh`):
+Use the bundled helper (`inkshelf-build-wifi.sh`), which can build first and then
+deploy in one shot:
 
 ```bash
-./inkshelf-deploy-wifi.sh 192.168.1.42 --pin 1234   # deploy to a known IP
-./inkshelf-deploy-wifi.sh --find --pin 1234         # auto-detect the reader, then deploy
+./inkshelf-build-wifi.sh 192.168.1.42 --pin 1234        # deploy the existing build
+./inkshelf-build-wifi.sh --find --pin 1234              # auto-detect the reader, then deploy
+./inkshelf-build-wifi.sh --find --build --pin 1234      # build, then deploy
+./inkshelf-build-wifi.sh --find --pull  --pin 1234      # git pull + clean rebuild, then deploy
 ```
 
-`--find` first tries mDNS, then scans the local `/24` for the WiFi Book Drop page
-— no extra tools required. The helper resolves the project from its own location
-and refuses to send anything but a verified ARM binary. On failure it tells you
-why: `403` (wrong/missing PIN) or no connection (reader asleep / screen closed).
+`--build` and `--pull` delegate to `inkshelf-build.sh` (so the build stays a
+single source of truth) and skip the USB copy. `--find` first tries mDNS, then
+scans the local `/24` for the WiFi Book Drop page — no extra tools required. The
+helper resolves the project from its own location and refuses to send anything but
+a verified ARM binary. On failure it says why: `403` (wrong/missing PIN) or no
+connection (reader asleep / screen closed).
 
-> Typical loop: `./inkshelf-build.sh --no-copy && ./inkshelf-deploy-wifi.sh --find --pin <PIN>`
+> One-shot dev loop: `./inkshelf-build-wifi.sh --find --pull --pin <PIN>`
 > (open WiFi Book Drop on the reader first so the server is listening).
 
 > **Security note:** `/deploy` runs arbitrary uploaded code on the device. The
@@ -243,7 +248,7 @@ cmake/                    arm-obreey cross-compile toolchain file
 tests/                    host test gate (no SDK / no network)
 build.sh                  Docker / direct build wrapper (CI-friendly)
 inkshelf-build.sh         one-command build + USB deploy (dev)
-inkshelf-deploy-wifi.sh   wireless deploy via /deploy endpoint (or scp)
+inkshelf-build-wifi.sh    build (optional) + wireless deploy via /deploy (or scp)
 Makefile                  build/test + jailbreak deploy (make deploy / deploy-nc)
 ```
 
