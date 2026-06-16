@@ -8,12 +8,12 @@ from the device's application menu.
 
 ## What it does
 
-- **OPDS catalog browser** — point it at any OPDS feed, browse, search and
+- **OPDS catalog browser** — point it at any OPDS feed, browse, filter and
   download books straight into the native PocketBook library. Ships with
-  presets for [Standard Ebooks](https://standardebooks.org),
-  [Project Gutenberg](https://www.gutenberg.org) and
+  presets for [Project Gutenberg](https://www.gutenberg.org) and
   [Flibusta](https://flibusta.is/opds) (Russian-language), plus a custom-URL
-  entry via the on-screen keyboard.
+  entry via the on-screen keyboard. Every list has a tap-to-filter bar (by
+  title/author) and a scrollbar for long catalogs.
 - **WiFi book drop** — starts a tiny HTTP server on the reader; from a PC or
   phone on the same WiFi you open the shown URL and upload `epub`/`fb2` files
   that then appear in the native PocketBook library.
@@ -27,10 +27,12 @@ Launch **inkshelf** from the device's Applications menu. The main menu has two
 entries:
 
 ### OPDS Catalog
-1. Pick a preset (Standard Ebooks, Project Gutenberg, Flibusta) or
-   **Custom URL...** and type an OPDS feed address with the on-screen keyboard.
+1. Pick a preset (Project Gutenberg, Flibusta) or **Custom URL...** and type an
+   OPDS feed address with the on-screen keyboard.
 2. Browse the feed; nested catalogs open inline, book entries open a detail
-   view. Use the feed's search (where the catalog advertises it) to filter.
+   view. Tap the filter bar at the top of any list to narrow it by title or
+   author; the **Menu** key runs the catalog's own server-side search where the
+   feed advertises one.
 3. Open a book and confirm download — the file lands in the device library and
    the PocketBook library is rescanned so it shows up immediately.
 
