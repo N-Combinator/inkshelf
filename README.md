@@ -113,8 +113,15 @@ under `/media/$USER/*/` (must expose an `applications/` folder).
 
 `inkshelf-build-wifi.sh` is the USB-free counterpart to 2a: it (optionally) builds
 and pushes the binary straight to the running app over WiFi via `POST /deploy`
-(atomic and PIN-guarded). Open the **WiFi Book Drop** screen on the reader first
-so its server is listening, then:
+(atomic and PIN-guarded).
+
+> **Updates only — requires inkshelf already installed.** `/deploy` is inkshelf's
+> own **WiFi Book Drop** feature, so this path only works to *update* a reader
+> that already runs inkshelf. Do the **first** install over USB (2a or 2c); after
+> that you can deploy over WiFi.
+
+Open the **WiFi Book Drop** screen on the reader first so its server is listening,
+then:
 
 ```bash
 ./inkshelf-build-wifi.sh --find --pin 1234          # deploy the current build
