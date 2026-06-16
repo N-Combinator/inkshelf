@@ -61,6 +61,23 @@ static size_t build_body(unsigned char *out, size_t cap,
     return n;
 }
 
+/* Like build_body but with a caller-chosen part Content-Type (deploy tests). */
+static size_t build_body_ct(unsigned char *out, size_t cap,
+                            const char *boundary, const char *filename,
+                            const char *ctype,
+                            const unsigned char *payload, size_t plen)
+{
+    size_t n = 0;
+    n += (size_t)snprintf((char *)out + n, cap - n,
+        "--%s\r\n"
+        "Content-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n"
+        "Content-Type: %s\r\n\r\n",
+        boundary, filename, ctype);
+    memcpy(out + n, payload, plen); n += plen;
+    n += (size_t)snprintf((char *)out + n, cap - n, "\r\n--%s--\r\n", boundary);
+    return n;
+}
+
 static unsigned char *slurp(const char *path, size_t *out_len)
 {
     FILE *f = fopen(path, "rb");
@@ -205,6 +222,84 @@ static void test_multipart(void)
     rmdir(dir);
 }
 
+static void test_deploy(void)
+{
+    printf("deploy endpoint:\n");
+
+    char tmpl[] = "/tmp/inkshelf_deploy_XXXXXX";
+    char *dir = mkdtemp(tmpl);
+    if (!dir) { printf("  FAIL could not make temp dir\n"); g_fail++; return; }
+
+    const char *app = "inkshelf.app";
+    char dest[512];
+    snprintf(dest, sizeof dest, "%s/%s", dir, app);
+    const char *ctype = "multipart/form-data; boundary=DB";
+
+    /* Seed an "old" binary so we can prove deploy OVERWRITES the fixed target
+     * (book-drop mode would instead create "inkshelf (1).app"). */
+    FILE *f = fopen(dest, "wb");
+    if (f) { fwrite("OLD-BINARY", 1, 10, f); fclose(f); }
+
+    /* 1. Happy path — octet-stream part replaces the running app in place.
+     *    Payload carries embedded NULs to confirm raw-binary handling. */
+    const unsigned char newbin[] = "\x7f" "ELF\x00 new inkshelf bytes \x00\x01\x02\xff";
+    size_t newlen = sizeof newbin;            /* include the embedded/trailing NULs */
+    unsigned char body[4096];
+    size_t blen = build_body_ct(body, sizeof body, "DB", "uploaded-name.app",
+                                "application/octet-stream", newbin, newlen);
+    memrd rd = { .data = body, .len = blen, .pos = 0, .chunk = 5 };
+    char err[256];
+    unsigned long long bytes = 0;
+    int rc = httpd_recv_deploy(mem_reader, &rd, ctype, dir, app, &bytes, err, sizeof err);
+    CHECK(rc == 0, "deploy: octet-stream upload accepted");
+    if (rc != 0) printf("       err=%s\n", err);
+    CHECK(bytes == newlen, "deploy: byte count == payload");
+
+    size_t got_len = 0;
+    unsigned char *got = slurp(dest, &got_len);
+    CHECK(got && got_len == newlen && memcmp(got, newbin, newlen) == 0,
+          "deploy: fixed target overwritten with new binary");
+    free(got);
+    struct stat stx;
+    char coll[600];
+    snprintf(coll, sizeof coll, "%s/inkshelf (1).app", dir);
+    CHECK(stat(coll, &stx) != 0, "deploy: no collision-renamed copy left behind");
+
+    /* 2. Wrong part mime is rejected and must not touch the installed binary. */
+    const unsigned char other[] = "should-not-land";
+    blen = build_body_ct(body, sizeof body, "DB", "x.app",
+                         "text/plain", other, sizeof other - 1);
+    memrd rd2 = { .data = body, .len = blen, .pos = 0, .chunk = 0 };
+    rc = httpd_recv_deploy(mem_reader, &rd2, ctype, dir, app, &bytes, err, sizeof err);
+    CHECK(rc == -1, "deploy: non-octet-stream part rejected");
+    got = slurp(dest, &got_len);
+    CHECK(got && got_len == newlen && memcmp(got, newbin, newlen) == 0,
+          "deploy: target unchanged after rejected upload");
+    free(got);
+
+    /* 3. Size cap fires just over HTTPD_DEPLOY_MAX, target left intact. */
+    size_t over = HTTPD_DEPLOY_MAX + 4096;
+    unsigned char *big = malloc(over);
+    unsigned char *bbody = malloc(over + 512);
+    if (big && bbody) {
+        memset(big, 0x5a, over);
+        size_t bl = build_body_ct(bbody, over + 512, "DB", "big.app",
+                                  "application/octet-stream", big, over);
+        memrd rd3 = { .data = bbody, .len = bl, .pos = 0, .chunk = 65536 };
+        rc = httpd_recv_deploy(mem_reader, &rd3, ctype, dir, app, &bytes, err, sizeof err);
+        CHECK(rc == -1, "deploy: over-10MB upload rejected by size cap");
+        got = slurp(dest, &got_len);
+        CHECK(got && got_len == newlen, "deploy: target unchanged after oversize upload");
+        free(got);
+    } else {
+        printf("  FAIL deploy: could not allocate oversize test buffers\n"); g_fail++;
+    }
+    free(big); free(bbody);
+
+    unlink(dest);
+    rmdir(dir);
+}
+
 static void test_local_ip(void)
 {
     printf("local ipv4:\n");
@@ -221,6 +316,7 @@ int main(void)
 {
     test_safe_name();
     test_multipart();
+    test_deploy();
     test_local_ip();
     printf("\n%s\n", g_fail ? "TESTS FAILED" : "ALL TESTS PASSED");
     return g_fail ? 1 : 0;

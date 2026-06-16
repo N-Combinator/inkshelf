@@ -170,7 +170,31 @@ filename, then the binary, on port `19991` (`NC_PORT=` to change). If the binary
 transfer hangs because your host `nc` doesn't close on EOF, add `-N` (BSD nc) or
 `-q0` (traditional) to the second `nc` in the recipe.
 
-After either deploy, relaunch inkshelf from the device's application list.
+After `make deploy`/`deploy-nc`, relaunch inkshelf from the device's
+application list.
+
+### Over-the-air: the built-in `/deploy` endpoint
+
+inkshelf's WiFi-drop server also accepts the running binary itself. While the
+**WiFi Book Drop** screen is open, `POST /deploy` with the new `.app` as a
+multipart file overwrites `/mnt/ext1/applications/inkshelf.app` and restarts the
+app — **no SSH, no jailbreak, no cable**. The write is atomic (`.part` +
+`rename`, safe even though the app is overwriting its own running binary) and
+guarded: the part must be `application/octet-stream` and ≤ 10 MB.
+
+The repo ships `inkshelf-deploy-wifi.sh` for this:
+
+```bash
+./inkshelf-deploy-wifi.sh 192.168.1.42        # HTTP POST to /deploy (app must be on the WiFi-drop screen)
+./inkshelf-deploy-wifi.sh 192.168.1.42 --ssh  # SCP fallback (needs sshd/PBJB)
+./inkshelf-deploy-wifi.sh --find              # discover the reader's IP on the LAN
+```
+
+> **Security note:** `/deploy` runs arbitrary uploaded code on the device. The
+> attack surface is bounded — the server only listens while you have the WiFi
+> Book Drop screen open — but treat it as a trusted-LAN developer convenience,
+> not something to leave exposed. The mime/size checks are sanity gates, not
+> authentication.
 
 ## Testing
 
@@ -208,6 +232,7 @@ cmake/              arm-obreey cross-compile toolchain file
 tests/              host test gate (no SDK / no network)
 build.sh            Docker / direct build wrapper
 Makefile            build/test + wireless deploy (make deploy / deploy-nc)
+inkshelf-deploy-wifi.sh  host helper: OTA deploy via /deploy endpoint or scp
 ```
 
 ## License
