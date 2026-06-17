@@ -258,8 +258,15 @@ static void draw_search_bar(const browse_state *b)
     FillArea(0, y, w, SEARCHBAR_H, WHITE);
     DrawRect(bx, by, bw, bh, DGRAY);
 
+    /* At the root the bar searches the whole catalog (server); elsewhere it is
+     * a local title/author filter over the loaded entries. */
+    int root_search = b->is_root && g_root_search_valid;
+
     char line[FILTER_CAP + 48];
-    if (b->filter[0]) {
+    if (root_search) {
+        snprintf(line, sizeof line, "Tap to search the whole library");
+        SetFont(f->sub, DGRAY);
+    } else if (b->filter[0]) {
         snprintf(line, sizeof line, "Filter: %s   (tap to edit)", b->filter);
         SetFont(f->sub, BLACK);
     } else {
@@ -421,6 +428,20 @@ static void search_kbd_cb(char *text)
     run_server_search(g_search_href, g_search_base, text);
 }
 
+/* Open the keyboard for a whole-library server search using the catalog's root
+ * search endpoint (captured in browse_load). Shared by the Menu key and the
+ * search bar at the root screen, where the visible entries are categories, not
+ * books — a local filter there matches nothing, so the bar must query the whole
+ * catalog instead. Caller must have checked g_root_search_valid. */
+static void start_root_search(void)
+{
+    snprintf(g_search_href, sizeof g_search_href, "%s", g_root_search_href);
+    snprintf(g_search_base, sizeof g_search_base, "%s", g_root_search_base);
+    g_query[0] = '\0';
+    OpenKeyboard("Search whole library", g_query,
+                 (int)sizeof(g_query) - 1, 0, search_kbd_cb);
+}
+
 /* ---- local filter (client-side, works on every catalog) ----------- */
 
 static browse_state *g_filter_origin;
@@ -465,11 +486,7 @@ static int browse_key(screen_t *self, int key)
         if (b->is_root && g_root_search_valid) {
             /* Main screen: search the whole library via the catalog's root
              * search endpoint. */
-            snprintf(g_search_href, sizeof g_search_href, "%s", g_root_search_href);
-            snprintf(g_search_base, sizeof g_search_base, "%s", g_root_search_base);
-            g_query[0] = '\0';
-            OpenKeyboard("Search whole library", g_query,
-                         (int)sizeof(g_query) - 1, 0, search_kbd_cb);
+            start_root_search();
         } else if (cur) {
             /* Inside a category that advertises its own search: scope the query
              * to this feed (whatever the catalog assigns to its search link). */
@@ -524,10 +541,17 @@ static int browse_pointer(screen_t *self, int x, int y)
     browse_state *b = self->data;
     if (!b->ok) return 0;
 
-    /* Tap on the filter bar (between header and first row) -> edit the query. */
+    /* Tap on the search bar (between header and first row). At the root the
+     * entries are categories, so the bar runs a whole-library server search
+     * (the report: searching from the root returned nothing because the bar
+     * only filtered the visible category list). Elsewhere it edits the local
+     * title/author filter over the loaded entries. */
     int sb_y = ui_header_height();
     if (y >= sb_y && y < sb_y + SEARCHBAR_H) {
-        filter_open(b, self);
+        if (b->is_root && g_root_search_valid)
+            start_root_search();
+        else
+            filter_open(b, self);
         return 1;
     }
 
