@@ -1,5 +1,7 @@
 # inkshelf
 
+![Downloads](https://img.shields.io/github/downloads/N-Combinator/inkshelf/total)
+
 Native PocketBook OPDS browser + WiFi book drop — **no KOReader, no jailbreak**.
 
 inkshelf is a single `.app` built against the official PocketBook InkView SDK.
