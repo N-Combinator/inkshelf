@@ -230,4 +230,4 @@ Makefile                  build/test + jailbreak deploy (make deploy / deploy-nc
 
 ## License
 
-TBD.
+MIT.
