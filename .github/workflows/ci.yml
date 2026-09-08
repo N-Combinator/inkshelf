@@ -1,0 +1,27 @@
+name: ci
+
+# The host test gate needs neither the PocketBook SDK nor a network, so every
+# push and pull request can afford to run it. release.yml runs the same gate
+# before it builds, but that only fires on a tag — this is what catches a
+# regression at the point it is proposed, not weeks later at release time.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host test gate (ASan + UBSan)
+        run: make test
