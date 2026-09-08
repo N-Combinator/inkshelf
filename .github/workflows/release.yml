@@ -92,6 +92,20 @@ jobs:
           # roughly halves what the cache has to store and restore.
           rm -rf "$PB_SDK_DIR/.git"
 
+      # build.sh does this itself now, but a tag cut before that fix still has
+      # to be buildable — the workflow checks out the tag's source, not main's.
+      # Only the compiler's own dependencies, never the whole SDK usr/lib: it
+      # also holds 2017 glib/icu/expat that would shadow the host's libraries.
+      - name: Provide libmpfr.so.4 for the SDK compiler
+        run: |
+          shim="$RUNNER_TEMP/pb-hostlibs"
+          mkdir -p "$shim"
+          for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
+            src="$PB_SDK_DIR/SDK-B288/usr/lib/$lib"
+            if [ -e "$src" ]; then ln -sfn "$src" "$shim/$lib"; fi
+          done
+          echo "LD_LIBRARY_PATH=$shim${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+
       - name: Cross-compile
         run: |
           test -x "$PB_SDK_DIR/SDK-B288/usr/bin/arm-obreey-linux-gnueabi-gcc"
@@ -105,16 +119,25 @@ jobs:
           file build/inkshelf.app | grep -Eq 'ELF 32-bit LSB.*\bARM\b' \
             || { echo "::error::build/inkshelf.app is not an ARM 32-bit ELF"; exit 1; }
 
-      - name: Checksum
-        id: sum
+      # GitHub rejects release assets whose name ends in .app ("name has a file
+      # extension that is not allowed"), so the binary ships inside a zip. The
+      # checksum file lists both: the zip to check the download, the .app to
+      # check the file that actually lands on the reader.
+      - name: Package
+        id: package
         run: |
           cd build
-          sha256sum inkshelf.app > inkshelf.app.sha256
-          cat inkshelf.app.sha256
+          ver=$(git describe --tags --always --match 'v*' 2>/dev/null || echo dev)
+          zip -j "inkshelf-${ver}.zip" inkshelf.app
+          sha256sum inkshelf.app "inkshelf-${ver}.zip" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          echo "zip=inkshelf-${ver}.zip" >> "$GITHUB_OUTPUT"
           {
-            echo "### inkshelf.app"
+            echo "### inkshelf-${ver}.zip"
             echo
-            echo "\`$(cut -d' ' -f1 inkshelf.app.sha256)\`"
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
             echo
             echo "$(file -b inkshelf.app)"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -124,7 +147,7 @@ jobs:
           name: inkshelf.app
           path: |
             build/inkshelf.app
-            build/inkshelf.app.sha256
+            build/SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Attach to release
@@ -133,18 +156,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+          ZIP: ${{ steps.package.outputs.zip }}
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             notes=$(mktemp)
             {
-              echo "Download \`inkshelf.app\` below and copy it into the \`applications/\`"
-              echo "folder on the reader — see the [install guide](https://github.com/${{ github.repository }}#install)."
+              echo "Download \`$ZIP\` below, unzip it, and copy \`inkshelf.app\` into"
+              echo "the \`applications/\` folder on the reader — see the"
+              echo "[install guide](https://github.com/${{ github.repository }}#install)."
               echo
               echo '```'
-              cat build/inkshelf.app.sha256
+              cat build/SHA256SUMS.txt
               echo '```'
             } > "$notes"
             gh release create "$TAG" --title "inkshelf $TAG" --notes-file "$notes" --generate-notes
           fi
           gh release upload "$TAG" \
-            build/inkshelf.app build/inkshelf.app.sha256 --clobber
+            "build/$ZIP" build/SHA256SUMS.txt --clobber

@@ -33,21 +33,24 @@ from the device's application menu.
 `inkshelf.app`; the source build is only for people who want to change the code
 (see [BUILDING.md](BUILDING.md)).
 
-1. Download `inkshelf.app` from the
-   [latest release](https://github.com/N-Combinator/inkshelf/releases/latest).
-2. Connect the reader over USB (or pull its SD card) and copy the file into the
-   `applications/` folder of the storage the reader exposes.
+1. Download `inkshelf-<version>.zip` from the
+   [latest release](https://github.com/N-Combinator/inkshelf/releases/latest)
+   and unzip it — inside is a single file, `inkshelf.app`. (It ships zipped
+   because GitHub refuses release assets with an `.app` extension.)
+2. Connect the reader over USB (or pull its SD card) and copy `inkshelf.app`
+   into the `applications/` folder of the storage the reader exposes.
 3. Eject the reader and launch **inkshelf** from its Applications menu.
 
 That is the whole install. A PocketBook `.app` is a plain ARM executable that
 the launcher runs — there is no signing, no store, no firmware change, and
 uninstalling is deleting the file.
 
-Optionally verify the download against the `inkshelf.app.sha256` published
-next to it:
+Optionally verify it against the `SHA256SUMS.txt` published next to the zip —
+it covers both the archive and the `inkshelf.app` inside it, so run it from the
+folder holding the downloaded zip and the unzipped binary:
 
 ```bash
-sha256sum -c inkshelf.app.sha256
+sha256sum -c SHA256SUMS.txt
 ```
 
 Every release binary is built by
