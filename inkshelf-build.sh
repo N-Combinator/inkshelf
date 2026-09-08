@@ -43,6 +43,21 @@ if [ "$DO_PULL" = 1 ]; then
   rm -rf build
 fi
 
+# The SDK's cc1 (gcc 6.3, 2017) needs libmpfr.so.4; current distros ship only
+# libmpfr.so.6 and package no compatible .so.4, so it dies with "error while
+# loading shared libraries". The SDK bundles the right one in usr/lib — but
+# that dir also holds 2017 glib/icu/expat, which would shadow the host's own
+# libraries for cmake/make, so link just the compiler's deps into build/ and
+# point LD_LIBRARY_PATH there.
+HOSTLIBS="$PROJECT/build/.hostlibs"
+mkdir -p "$HOSTLIBS"
+for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
+  if [ -e "$SDK/usr/lib/$lib" ]; then
+    ln -sfn "$SDK/usr/lib/$lib" "$HOSTLIBS/$lib"
+  fi
+done
+export LD_LIBRARY_PATH="$HOSTLIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 # ---- 2. CA bundle (download if missing or older than 30 days) ---------------
 mkdir -p "$PROJECT/assets"
 if [ ! -f "$CACERT_LOCAL" ] || find "$CACERT_LOCAL" -mtime +30 | grep -q .; then

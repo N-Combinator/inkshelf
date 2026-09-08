@@ -23,6 +23,25 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${ROOT}/build"
 PB_TARGET="arm-obreey-linux-gnueabi"
 
+# The SDK's cc1 is a 2017 gcc 6.3 binary that needs libmpfr.so.4 (mpfr 3.x).
+# Distros have shipped libmpfr.so.6 for years and package no compatible .so.4,
+# so on a current host the compiler dies with "error while loading shared
+# libraries: libmpfr.so.4". The SDK bundles the right one under usr/lib, but
+# that directory also holds 2017 builds of glib/icu/expat: putting all of it on
+# LD_LIBRARY_PATH can break the host's own cmake/make. Link only the
+# compiler's own dependencies into a private directory and point at that.
+pb_host_libs() {
+    [[ -n "${PB_SDK_ROOT:-}" && -d "${PB_SDK_ROOT}/usr/lib" ]] || return 0
+    local shim="${BUILD_DIR}/.hostlibs" lib
+    mkdir -p "${shim}"
+    for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
+        if [[ -e "${PB_SDK_ROOT}/usr/lib/${lib}" ]]; then
+            ln -sfn "${PB_SDK_ROOT}/usr/lib/${lib}" "${shim}/${lib}"
+        fi
+    done
+    export LD_LIBRARY_PATH="${shim}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+}
+
 cmake_build() {
     # Fail early with a useful message if the cross toolchain isn't reachable.
     # Real SDK layout: $PB_SDK_ROOT/usr/bin/arm-obreey-linux-gnueabi-gcc.
@@ -36,6 +55,7 @@ cmake_build() {
         echo "       linux/amd64 container (see BUILDING.md), it will not run natively." >&2
         exit 1
     fi
+    pb_host_libs
     cmake -S "${ROOT}" -B "${BUILD_DIR}" \
         -DCMAKE_TOOLCHAIN_FILE="${ROOT}/cmake/toolchain-arm-obreey.cmake" \
         -DCMAKE_BUILD_TYPE=Release
