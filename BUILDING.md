@@ -201,7 +201,9 @@ The workflow then
 3. cross-compiles via `build.sh`,
 4. refuses to publish anything that `file` does not report as an ARM 32-bit ELF,
 5. creates the GitHub release if the tag has none yet, and uploads
-   `inkshelf.app` plus `inkshelf.app.sha256` to it.
+   `inkshelf-<tag>.zip` plus `SHA256SUMS.txt` to it. The binary is zipped
+   because GitHub rejects release assets whose name ends in `.app`
+   (`422: name has a file extension that is not allowed`).
 
 Writing release notes first is fine: if a release for the tag already exists,
 the workflow keeps its notes and only attaches the binaries.
