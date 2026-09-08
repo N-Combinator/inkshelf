@@ -1,0 +1,144 @@
+name: release
+
+# Builds the shippable artifact — a single ARM 32-bit ELF named inkshelf.app —
+# and attaches it to the GitHub release for the tag that triggered the run, so
+# users can install inkshelf without cloning the 680 MB PocketBook SDK.
+#
+#   push a v* tag        -> test, build, attach inkshelf.app + .sha256 to the release
+#   manual dispatch      -> test, build, upload as a workflow artifact only
+#                           (or attach to an existing release if `tag` is given)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and attach the .app to (blank = artifact only)'
+        required: false
+        default: ''
+
+# The .app is uploaded to a release, so the job needs write access to contents.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Branch of pocketbook/SDK_6.3.0 that actually carries SDK-B288/ (master is a
+  # README only), and where we keep the checkout on the runner.
+  PB_SDK_BRANCH: '6.5'
+  PB_SDK_DIR: ${{ github.workspace }}/../pocketbook-sdk
+
+jobs:
+  # Gate: the host test suite needs neither the SDK nor a network, so it is a
+  # cheap way to stop a broken tag from ever producing a downloadable binary.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host test gate (ASan + UBSan)
+        run: make test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest   # the SDK toolchain binaries are Linux x86_64 ELF
+    permissions:
+      contents: write        # needed by `gh release upload`
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # CMakeLists.txt derives INKSHELF_VERSION from `git describe --tags`,
+          # so the tags have to be present or the about screen shows a bare hash.
+          fetch-depth: 0
+
+      - name: Resolve SDK revision
+        id: sdk
+        run: |
+          sha=$(curl -fsSL \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Authorization: Bearer ${{ github.token }}' \
+            "https://api.github.com/repos/pocketbook/SDK_6.3.0/branches/${PB_SDK_BRANCH}" \
+            | jq -r '.commit.sha')
+          test -n "$sha" && test "$sha" != null
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # The SDK is ~680 MB of git objects and never changes between runs, so
+      # cache the checkout and key it on the branch head — a moved branch
+      # invalidates the cache instead of silently building against a stale SDK.
+      - name: Cache PocketBook SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PB_SDK_DIR }}
+          key: pb-sdk-${{ env.PB_SDK_BRANCH }}-${{ steps.sdk.outputs.sha }}
+
+      - name: Fetch PocketBook SDK
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --single-branch --branch "$PB_SDK_BRANCH" \
+            https://github.com/pocketbook/SDK_6.3.0 "$PB_SDK_DIR"
+          # Drop the git metadata: only the tree is needed to compile, and it
+          # roughly halves what the cache has to store and restore.
+          rm -rf "$PB_SDK_DIR/.git"
+
+      - name: Cross-compile
+        run: |
+          test -x "$PB_SDK_DIR/SDK-B288/usr/bin/arm-obreey-linux-gnueabi-gcc"
+          PB_SDK_ROOT="$PB_SDK_DIR/SDK-B288" ./build.sh
+
+      # A host-arch binary would install and then simply fail to launch on the
+      # reader with no useful error, so refuse to publish anything but ARM.
+      - name: Verify the artifact is an ARM binary
+        run: |
+          file build/inkshelf.app
+          file build/inkshelf.app | grep -Eq 'ELF 32-bit LSB.*\bARM\b' \
+            || { echo "::error::build/inkshelf.app is not an ARM 32-bit ELF"; exit 1; }
+
+      - name: Checksum
+        id: sum
+        run: |
+          cd build
+          sha256sum inkshelf.app > inkshelf.app.sha256
+          cat inkshelf.app.sha256
+          {
+            echo "### inkshelf.app"
+            echo
+            echo "\`$(cut -d' ' -f1 inkshelf.app.sha256)\`"
+            echo
+            echo "$(file -b inkshelf.app)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inkshelf.app
+          path: |
+            build/inkshelf.app
+            build/inkshelf.app.sha256
+          if-no-files-found: error
+
+      - name: Attach to release
+        # Tag pushes always publish; a manual run only does so when given a tag.
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            notes=$(mktemp)
+            {
+              echo "Download \`inkshelf.app\` below and copy it into the \`applications/\`"
+              echo "folder on the reader — see the [install guide](https://github.com/${{ github.repository }}#install)."
+              echo
+              echo '```'
+              cat build/inkshelf.app.sha256
+              echo '```'
+            } > "$notes"
+            gh release create "$TAG" --title "inkshelf $TAG" --notes-file "$notes" --generate-notes
+          fi
+          gh release upload "$TAG" \
+            build/inkshelf.app build/inkshelf.app.sha256 --clobber
