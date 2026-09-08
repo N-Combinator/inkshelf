@@ -97,6 +97,29 @@ cmake --build build --parallel
 `build.sh` wraps the same thing (and can run it inside your own SDK container
 via `USE_DOCKER=1 PB_SDK_IMAGE=...`); it is what CI calls.
 
+Building this way — driving `cmake` yourself rather than through `build.sh` or
+`inkshelf-build.sh` — you may hit:
+
+```
+cc1: error while loading shared libraries: libmpfr.so.4
+```
+
+The SDK's compiler is a 2017 gcc 6.3 that wants mpfr 3.x, and distros have
+shipped `libmpfr.so.6` for years with no compatible `.so.4` to install. The SDK
+carries the right library itself, so point the loader at it — and only at the
+libraries the compiler needs, because `$PB_SDK_ROOT/usr/lib` also holds 2017
+builds of glib/icu/expat that would shadow your host's:
+
+```bash
+mkdir -p build/.hostlibs
+for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
+  ln -sfn "$PB_SDK_ROOT/usr/lib/$lib" "build/.hostlibs/$lib"
+done
+export LD_LIBRARY_PATH="$PWD/build/.hostlibs:$LD_LIBRARY_PATH"
+```
+
+Both build scripts do this for you.
+
 ## Installing over USB (no jailbreak)
 
 To install without the build script (a prebuilt `.app`, or after a manual CMake
