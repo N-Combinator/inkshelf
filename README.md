@@ -10,12 +10,21 @@ from the device's application menu.
 
 **Contents**
 
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Using the app](#using-the-app)
 - [Troubleshooting](#troubleshooting)
 - [Building & installing from source](#building--installing-from-source)
 - [Testing](#testing)
 - [Project layout](#project-layout)
+
+## Screenshots
+
+<img src="docs/screenshots/01.png" width="420" alt="inkshelf on a PocketBook reader (1/5)">
+<img src="docs/screenshots/02.png" width="420" alt="inkshelf on a PocketBook reader (2/5)">
+<img src="docs/screenshots/03.png" width="420" alt="inkshelf on a PocketBook reader (3/5)">
+<img src="docs/screenshots/04.png" width="420" alt="inkshelf on a PocketBook reader (4/5)">
+<img src="docs/screenshots/05.png" width="420" alt="inkshelf on a PocketBook reader (5/5)">
 
 ## Features
 
