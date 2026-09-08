@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to build and attach the .app to (blank = artifact only)'
+        description: 'Tag to build FROM and publish to (blank = build this branch, artifact only)'
         required: false
         default: ''
 
@@ -40,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
 
       - name: Host test gate (ASan + UBSan)
         run: make test
@@ -52,6 +54,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # A manual run starts from the branch holding this file, not from the
+          # tag being published, so build the tag explicitly when one is given —
+          # otherwise the release would get a binary built from another commit.
+          ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
           # CMakeLists.txt derives INKSHELF_VERSION from `git describe --tags`,
           # so the tags have to be present or the about screen shows a bare hash.
           fetch-depth: 0
