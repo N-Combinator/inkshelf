@@ -33,7 +33,7 @@ cmake_build() {
         echo "         git clone https://github.com/pocketbook/SDK_6.3.0 && cd SDK_6.3.0 && git checkout 6.5" >&2
         echo "       then point at the SDK-B288 dir:  PB_SDK_ROOT=/path/to/SDK-B288 ./build.sh" >&2
         echo "       NOTE: the toolchain is Linux x86_64 — on macOS run this inside a" >&2
-        echo "       linux/amd64 container (see README), it will not run natively." >&2
+        echo "       linux/amd64 container (see BUILDING.md), it will not run natively." >&2
         exit 1
     fi
     cmake -S "${ROOT}" -B "${BUILD_DIR}" \

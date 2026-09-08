@@ -1,5 +1,6 @@
 # inkshelf
 
+[![Latest release](https://img.shields.io/github/v/release/N-Combinator/inkshelf)](https://github.com/N-Combinator/inkshelf/releases/latest)
 ![Downloads](https://img.shields.io/github/downloads/N-Combinator/inkshelf/total)
 
 Native PocketBook OPDS browser + WiFi book drop — **no KOReader, no jailbreak**.
@@ -11,12 +12,12 @@ from the device's application menu.
 **Contents**
 
 - [Screenshots](#screenshots)
+- [Install](#install)
 - [Features](#features)
 - [Using the app](#using-the-app)
+- [Updating](#updating)
 - [Troubleshooting](#troubleshooting)
-- [Building & installing from source](#building--installing-from-source)
-- [Testing](#testing)
-- [Project layout](#project-layout)
+- [Building from source](BUILDING.md)
 
 ## Screenshots
 
@@ -25,6 +26,40 @@ from the device's application menu.
 <img src="docs/screenshots/03.png" width="420" alt="inkshelf on a PocketBook reader (3/5)">
 <img src="docs/screenshots/04.png" width="420" alt="inkshelf on a PocketBook reader (4/5)">
 <img src="docs/screenshots/05.png" width="420" alt="inkshelf on a PocketBook reader (5/5)">
+
+## Install
+
+**You do not need to build anything.** Every release ships a ready-to-run
+`inkshelf.app`; the source build is only for people who want to change the code
+(see [BUILDING.md](BUILDING.md)).
+
+1. Download `inkshelf.app` from the
+   [latest release](https://github.com/N-Combinator/inkshelf/releases/latest).
+2. Connect the reader over USB (or pull its SD card) and copy the file into the
+   `applications/` folder of the storage the reader exposes.
+3. Eject the reader and launch **inkshelf** from its Applications menu.
+
+That is the whole install. A PocketBook `.app` is a plain ARM executable that
+the launcher runs — there is no signing, no store, no firmware change, and
+uninstalling is deleting the file.
+
+Optionally verify the download against the `inkshelf.app.sha256` published
+next to it:
+
+```bash
+sha256sum -c inkshelf.app.sha256
+```
+
+Every release binary is built by
+[GitHub Actions](.github/workflows/release.yml) from the tagged source, so the
+build log for the exact file you downloaded is public under the repo's Actions
+tab.
+
+**Device support.** The binary is an ARM 32-bit ELF built against the official
+SDK (`SDK-B288`, i.e. SDK_6.3.0 branch `6.5`) and targets stock PocketBook
+firmware. If it works — or fails to launch — on your model, please open an
+issue naming the model and firmware version so this section can list what is
+actually verified.
 
 ## Features
 
@@ -77,6 +112,26 @@ Every upload and over-the-air deploy requires a 4-digit PIN.
   header `X-Inkshelf-PIN: <pin>`. The browser upload page sends it automatically;
   scripts pass `--pin <PIN>`. A missing or wrong PIN returns `403 Forbidden`.
 
+## Updating
+
+Over USB, the update is the install: copy the new `inkshelf.app` over the old
+one in `applications/`.
+
+Without a cable, a running inkshelf can install its own replacement. Open the
+**WiFi Book Drop** screen on the reader (so its server is listening), then from
+a machine on the same network:
+
+```bash
+curl -X POST -H "X-Inkshelf-PIN: 1234" \
+  -F "file=@inkshelf.app;type=application/octet-stream" \
+  http://<reader-ip>:8080/deploy
+```
+
+The swap is atomic and the device restarts the app itself. This only *updates* a
+reader that already runs inkshelf — the first install has to go over USB.
+(Working from a clone, `./inkshelf-build-wifi.sh --find --pin 1234` does the
+same thing plus device discovery; see [BUILDING.md](BUILDING.md).)
+
 ## Troubleshooting
 
 ### WiFi drops while the app is open
@@ -99,143 +154,16 @@ it normally succeeds on the second try. If it keeps failing:
 - in the reader's *Settings → Connectivity*, raise or disable the
   "disconnect when idle" timeout so the firmware stops powering the radio down.
 
-## Building & installing from source
+### The app does not appear in the Applications menu
 
-inkshelf cross-compiles with the `arm-obreey-linux-gnueabi` toolchain from the
-official [PocketBook SDK_6.3.0](https://github.com/pocketbook/SDK_6.3.0). The
-output is always a single `build/inkshelf.app` (an ARM 32-bit ELF).
+The file has to be named `inkshelf.app` and sit directly in `applications/`
+(not in a subfolder). Some firmware versions only rescan the menu after the
+reader is ejected and the USB cable unplugged.
 
-> **TL;DR** — on a Linux x86_64 host with the SDK in place:
-> `./inkshelf-build.sh` builds and copies over USB, or
-> `./inkshelf-build-wifi.sh --find --pull --pin <PIN>` builds and deploys over WiFi.
+## Contributing
 
-### 1. Get the SDK (on the `6.5` branch, not `master`)
-
-The repo's default `master` branch contains **only a README** — the actual SDK
-lives on the `6.5` branch under `SDK-B288/`. (A plain `git clone` still pulls
-~670 MB because it downloads every branch's objects.)
-
-```bash
-git clone https://github.com/pocketbook/SDK_6.3.0 ~/pocketbook-sdk
-cd ~/pocketbook-sdk && git checkout 6.5      # SDK-B288/ now exists
-```
-
-The compiler is `SDK-B288/usr/bin/arm-obreey-linux-gnueabi-gcc` and the InkView
-sysroot is `SDK-B288/usr/arm-obreey-linux-gnueabi/sysroot`. **The toolchain
-binaries are Linux x86_64 ELF** — they run on a Linux x86_64 host only (not
-natively on macOS; use a `linux/amd64` container there).
-
-### 2a. One-command build (recommended, Linux x86_64)
-
-`inkshelf-build.sh` (repo root) runs the whole loop: cmake configure →
-cross-compile → verify the output is an ARM ELF → copy `inkshelf.app` onto a
-USB-connected reader.
-
-```bash
-chmod +x inkshelf-build.sh        # once, after cloning
-./inkshelf-build.sh               # build + copy to the connected reader
-./inkshelf-build.sh --pull        # git pull first, then a clean rebuild + copy
-./inkshelf-build.sh --no-copy     # build only, don't touch the device
-```
-
-It finds the project from its own location, so it works from any clone. It
-expects the SDK at `~/pocketbook-sdk/SDK-B288`; override with
-`PB_SDK_ROOT=/path/to/SDK-B288 ./inkshelf-build.sh`. The reader is auto-detected
-under `/media/$USER/*/` (must expose an `applications/` folder).
-
-### 2b. Wireless build & deploy
-
-`inkshelf-build-wifi.sh` is the USB-free counterpart to 2a: it (optionally) builds
-and pushes the binary straight to the running app over WiFi via `POST /deploy`
-(atomic and PIN-guarded).
-
-> **Updates only — requires inkshelf already installed.** `/deploy` is inkshelf's
-> own **WiFi Book Drop** feature, so this path only works to *update* a reader
-> that already runs inkshelf. Do the **first** install over USB (2a or 2c); after
-> that you can deploy over WiFi.
-
-Open the **WiFi Book Drop** screen on the reader first so its server is listening,
-then:
-
-```bash
-./inkshelf-build-wifi.sh --find --pin 1234          # deploy the current build
-./inkshelf-build-wifi.sh --find --build --pin 1234  # build, then deploy
-./inkshelf-build-wifi.sh --find --pull  --pin 1234  # git pull + clean rebuild, then deploy
-```
-
-`--find` locates the reader via mDNS or a local `/24` scan; `--build`/`--pull`
-delegate to `inkshelf-build.sh` (single source of truth for the build). Use the
-PIN shown on the reader. Jailbroken (PBJB) readers can instead push with
-`make deploy` / `make deploy-nc` (see the `Makefile`).
-
-### 2c. Manual CMake
-
-```bash
-cmake -S . -B build \
-  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm-obreey.cmake \
-  -DPB_SDK_ROOT=/path/to/SDK-B288
-cmake --build build --parallel
-```
-
-### A note on HTTPS / TLS
-
-PocketBook firmware's libcurl is built against **NSS**, not OpenSSL. NSS ignores
-`CURLOPT_CAINFO` pointed at a PEM bundle (it expects an NSS certificate
-database), so supplying a CA file always failed the handshake with
-`CURLE_SSL_CACERT_BADFILE` (curl error 77). inkshelf therefore disables TLS
-peer/host verification (`CURLOPT_SSL_VERIFYPEER`/`VERIFYHOST` = 0) rather than
-shipping an NSS trust DB. That is an accepted trade-off here: it only fetches
-public OPDS feeds and public-domain books and never sends credentials or writes
-data, so there is nothing for a man-in-the-middle to steal. No CA bundle needs to
-be installed on the device.
-
-### Installing over USB (no jailbreak)
-
-To install without the build script (a prebuilt `.app`, or after a manual CMake
-build), connect the reader over USB or pull its SD card, copy `build/inkshelf.app`
-into the `applications/` folder, eject, and launch **inkshelf** from the
-Applications menu. (2a does this automatically over USB; 2b does it over WiFi.)
-
-## Testing
-
-The parsing and server logic is covered by a host test gate that needs
-**neither the PocketBook SDK nor a network connection** — it generates shim
-`inkview.h` / libcurl headers so the repo stays self-contained:
-
-```bash
-make test            # or: tests/run_host_tests.sh
-```
-
-It runs, under AddressSanitizer + UBSan:
-
-- unit tests for the dependency-free OPDS parsing code (`xml.c` + `opds.c`),
-- unit tests for the upload HTTP server (`httpd.c`),
-- an integration smoke test that drives the whole app (catalog → browse →
-  search → book detail and back) against stub InkView + libcurl.
-
-## Project layout
-
-```
-src/
-  main.c            event-loop entry point
-  app.{c,h}         screen nav-stack (push/pop/repaint, key/pointer dispatch)
-  ui.{c,h}          fonts, header/footer chrome, paged list widget
-  screens.{c,h}     main menu + screen wiring
-  opds.{c,h}        OPDS Atom feed model + link/entry classification
-  xml.{c,h}         dependency-free SAX-style XML parser
-  http.{c,h}        libcurl HTTP fetch helpers
-  opds_ui.c         OPDS browser UI (catalog picker, browse, search, detail)
-  download.{c,h}    book download to the device library
-  library.{c,h}     library paths + PocketBook library rescan
-  httpd.{c,h}       WiFi-drop embedded HTTP upload server
-  config.{c,h}      flat key=value config (PIN storage, inkshelf.conf)
-cmake/                    arm-obreey cross-compile toolchain file
-tests/                    host test gate (no SDK / no network)
-build.sh                  Docker / direct build wrapper (CI-friendly)
-inkshelf-build.sh         one-command build + USB deploy (dev)
-inkshelf-build-wifi.sh    build (optional) + wireless deploy via /deploy (or scp)
-Makefile                  build/test + jailbreak deploy (make deploy / deploy-nc)
-```
+Build instructions, the host test gate, the project layout and the release
+process live in **[BUILDING.md](BUILDING.md)**.
 
 ## License
 
