@@ -83,6 +83,12 @@ else()
     target_link_libraries(inkshelf.app PRIVATE inkview)
 endif()
 
+# Release binaries are copied onto a reader, never debugged there, so strip the
+# symbol table at link time — it is most of the file. Debug builds and the
+# no-build-type dev loop keep their symbols. (The SDK's own generated toolchain
+# file does the same for its release configuration.)
+target_link_options(inkshelf.app PRIVATE $<$<CONFIG:Release>:-s>)
+
 # No "lib" prefix, keep the .app suffix exactly.
 set_target_properties(inkshelf.app PROPERTIES
     PREFIX ""

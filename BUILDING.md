@@ -198,7 +198,7 @@ The workflow then
 1. runs the host test gate (a failure here stops the release; no binary ships),
 2. fetches the SDK (shallow clone of branch `6.5`, cached between runs and keyed
    on that branch's head commit),
-3. cross-compiles via `build.sh`,
+3. cross-compiles via `build.sh` (a Release build, so the binary is stripped),
 4. refuses to publish anything that `file` does not report as an ARM 32-bit ELF,
 5. creates the GitHub release if the tag has none yet, and uploads
    `inkshelf-<tag>.zip` plus `SHA256SUMS.txt` to it. The binary is zipped
