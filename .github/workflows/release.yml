@@ -92,6 +92,20 @@ jobs:
           # roughly halves what the cache has to store and restore.
           rm -rf "$PB_SDK_DIR/.git"
 
+      # build.sh does this itself now, but a tag cut before that fix still has
+      # to be buildable — the workflow checks out the tag's source, not main's.
+      # Only the compiler's own dependencies, never the whole SDK usr/lib: it
+      # also holds 2017 glib/icu/expat that would shadow the host's libraries.
+      - name: Provide libmpfr.so.4 for the SDK compiler
+        run: |
+          shim="$RUNNER_TEMP/pb-hostlibs"
+          mkdir -p "$shim"
+          for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
+            src="$PB_SDK_DIR/SDK-B288/usr/lib/$lib"
+            if [ -e "$src" ]; then ln -sfn "$src" "$shim/$lib"; fi
+          done
+          echo "LD_LIBRARY_PATH=$shim${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+
       - name: Cross-compile
         run: |
           test -x "$PB_SDK_DIR/SDK-B288/usr/bin/arm-obreey-linux-gnueabi-gcc"
