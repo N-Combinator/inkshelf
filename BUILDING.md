@@ -183,10 +183,13 @@ The workflow then
 Writing release notes first is fine: if a release for the tag already exists,
 the workflow keeps its notes and only attaches the binaries.
 
-The workflow can also be started by hand from the Actions tab
-(*Run workflow*) — leave the `tag` input empty to just build and get the `.app`
-as a workflow artifact, or give an existing tag to attach the binaries to that
-release.
+The workflow can also be started by hand from the Actions tab (*Run workflow*).
+Leave the `tag` input empty to build whatever branch you picked and get the
+`.app` as a workflow artifact. Give it a tag and it checks that tag out, builds
+it, and attaches the binaries to its release — which is how a tag that was cut
+before this workflow existed (or whose release went out without assets) gets its
+binary. The branch chosen in *Use workflow from* only decides which version of
+the workflow runs; `tag` decides what gets built.
 
 ### Versioning
 
