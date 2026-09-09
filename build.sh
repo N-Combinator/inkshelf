@@ -30,9 +30,10 @@ PB_TARGET="arm-obreey-linux-gnueabi"
 # that directory also holds 2017 builds of glib/icu/expat: putting all of it on
 # LD_LIBRARY_PATH can break the host's own cmake/make. Link only the
 # compiler's own dependencies into a private directory and point at that.
+# Kept outside build/ so it cannot interfere with build-directory bookkeeping.
 pb_host_libs() {
     [[ -n "${PB_SDK_ROOT:-}" && -d "${PB_SDK_ROOT}/usr/lib" ]] || return 0
-    local shim="${BUILD_DIR}/.hostlibs" lib
+    local shim="${ROOT}/.pb-hostlibs" lib
     mkdir -p "${shim}"
     for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
         if [[ -e "${PB_SDK_ROOT}/usr/lib/${lib}" ]]; then
