@@ -47,9 +47,11 @@ fi
 # libmpfr.so.6 and package no compatible .so.4, so it dies with "error while
 # loading shared libraries". The SDK bundles the right one in usr/lib — but
 # that dir also holds 2017 glib/icu/expat, which would shadow the host's own
-# libraries for cmake/make, so link just the compiler's deps into build/ and
-# point LD_LIBRARY_PATH there.
-HOSTLIBS="$PROJECT/build/.hostlibs"
+# libraries for cmake/make, so link just the compiler's deps into a private
+# directory and point LD_LIBRARY_PATH there. It must live OUTSIDE build/: the
+# cmake-configure step below only runs when build/ does not exist yet, so
+# creating build/.hostlibs here would silently skip configuration.
+HOSTLIBS="$PROJECT/.pb-hostlibs"
 mkdir -p "$HOSTLIBS"
 for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
   if [ -e "$SDK/usr/lib/$lib" ]; then

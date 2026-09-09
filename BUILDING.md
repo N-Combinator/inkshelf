@@ -111,11 +111,11 @@ libraries the compiler needs, because `$PB_SDK_ROOT/usr/lib` also holds 2017
 builds of glib/icu/expat that would shadow your host's:
 
 ```bash
-mkdir -p build/.hostlibs
+mkdir -p .pb-hostlibs
 for lib in libmpfr.so.4 libmpc.so.3 libgmp.so.10; do
-  ln -sfn "$PB_SDK_ROOT/usr/lib/$lib" "build/.hostlibs/$lib"
+  ln -sfn "$PB_SDK_ROOT/usr/lib/$lib" ".pb-hostlibs/$lib"
 done
-export LD_LIBRARY_PATH="$PWD/build/.hostlibs:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$PWD/.pb-hostlibs:$LD_LIBRARY_PATH"
 ```
 
 Both build scripts do this for you.
