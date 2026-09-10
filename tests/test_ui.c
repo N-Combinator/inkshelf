@@ -19,8 +19,9 @@ static int g_fail;
 
 /* ---- minimal InkView stubs so ui.c links (only the draw helpers it calls;
  * the test never paints anything) -------------------------------------- */
-int  ScreenWidth(void)  { return 758; }
-int  ScreenHeight(void) { return 1024; }
+static int g_sw = 758, g_sh = 1024;     /* 6" panel unless a test changes it */
+int  ScreenWidth(void)  { return g_sw; }
+int  ScreenHeight(void) { return g_sh; }
 ifont *OpenFont(const char *n, int s, int a) { (void)n; (void)s; (void)a; return (ifont *)1; }
 void CloseFont(ifont *f) { (void)f; }
 void SetFont(ifont *f, int c) { (void)f; (void)c; }
@@ -67,6 +68,22 @@ int main(void)
     CHECK(!ui_exit_button_hit(100, 36), "tap on the left of the header is not Exit");
     CHECK(!ui_exit_button_hit(670, 300),"tap below the header is not Exit");
     CHECK(!ui_back_button_hit(670, 36), "root screen has no Back button to hit");
+
+    /* Primary action (Download) button geometry. FOOTER_H 56, ACTION_MARGIN 12,
+     * PAD_X 24; height is max(64, screen_h / 14). */
+    printf("action button on a 758x1024 panel:\n");
+    CHECK(ui_action_button_top() == 1024 - 56 - 12 - 73 - 12, "73 px tall, sits above the footer");
+    CHECK(ui_action_button_hit(379, 919),  "tap in the middle hits");
+    CHECK(ui_action_button_hit(30, 919),   "full content width: tap near the left edge hits");
+    CHECK(!ui_action_button_hit(379, 870), "tap above the button misses");
+
+    printf("action button on a 1404x1872 panel (InkPad One):\n");
+    g_sw = 1404; g_sh = 1872;
+    CHECK(ui_action_button_top() == 1872 - 56 - 12 - 133 - 12, "scales to 133 px tall");
+    CHECK(ui_action_button_hit(702, 1737), "tap in the middle hits");
+    CHECK(ui_action_button_hit(1370, 1737),"spans the content width: tap near the right edge hits");
+    CHECK(!ui_action_button_hit(702, 1650),"tap above the button misses");
+    g_sw = 758; g_sh = 1024;
 
     if (g_fail) { printf("FAILED: %d\n", g_fail); return 1; }
     printf("ui: all passed\n");
