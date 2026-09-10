@@ -117,6 +117,13 @@ void FillArea(int a, int b, int c, int d, int e) { (void)a; (void)b; (void)c; (v
 void FullUpdate(void) {}
 void PartialUpdate(int a, int b, int c, int d) { (void)a; (void)b; (void)c; (void)d; }
 static int g_closeapp_calls;
+static int  g_book_ready_calls;
+static char g_book_ready_last[256];
+void BookReady(const char *path)
+{
+    g_book_ready_calls++;
+    snprintf(g_book_ready_last, sizeof g_book_ready_last, "%s", path);
+}
 void CloseApp(void) { g_closeapp_calls++; }
 int Message(int i, const char *t, const char *x, int to) { (void)i; (void)t; (void)x; (void)to; return 0; }
 int NetConnect(const char *name) { (void)name; return 0; }
@@ -148,6 +155,8 @@ void SendEvent(void *hproc, int type, int par1, int par2)
 }
 
 static int (*g_handler)(int, int, int);
+
+static const char *g_fake_received;
 
 void InkViewMain(int (*h)(int, int, int))
 {
@@ -202,8 +211,17 @@ void InkViewMain(int (*h)(int, int, int))
     /* Exercise the WiFi Drop screen: enter, refresh (any key), then back. */
     h(EVT_KEYPRESS, IV_KEY_DOWN, 0);    /* main menu: select WiFi Book Drop */
     h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> WiFi Drop screen (starts stub server) */
+
+    /* --- WiFi drop: received books reach the firmware's library ------------ */
+    printf("wifi drop announces received books:\n");
+    g_fake_received = "/mnt/ext1/Books/Uploaded One.epub";
     h(EVT_KEYPRESS, IV_KEY_NEXT, 0);    /* refresh (any non-Back key) */
+    CHECK(g_book_ready_calls == 1 && strcmp(g_book_ready_last, "/mnt/ext1/Books/Uploaded One.epub") == 0,
+          "a book received while the screen is open is announced on refresh");
+    g_fake_received = "/mnt/ext1/Books/Uploaded Two.fb2";
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> back to main menu (stops stub server) */
+    CHECK(g_book_ready_calls == 2 && strcmp(g_book_ready_last, "/mnt/ext1/Books/Uploaded Two.fb2") == 0,
+          "a book received after the last refresh is announced when leaving");
 
     /* --- 4) Exit button on the home screen -------------------------------- */
     printf("home screen exit:\n");
@@ -228,6 +246,15 @@ int httpd_start(int port, char *err, size_t errsz)
     return 0;
 }
 void httpd_stop(void) {}
+
+/* One pending "received" book at a time (g_fake_received, set by the script). */
+int httpd_take_received(char *out, size_t outsz)
+{
+    if (!g_fake_received) return 0;
+    snprintf(out, outsz, "%s", g_fake_received);
+    g_fake_received = NULL;
+    return 1;
+}
 void httpd_set_pin(const char *pin) { (void)pin; }
 void httpd_status(httpd_status_t *out)
 {
@@ -259,7 +286,6 @@ int download_book(const char *url, const char *title, const char *mime,
     return 0;
 }
 
-int download_rescan_library(void) { return 0; }
 
 /* ---- libcurl stubs ------------------------------------------------- */
 

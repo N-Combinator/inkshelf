@@ -77,6 +77,7 @@ void CloseApp(void);
 void OpenKeyboard(const char *title, char *buf, int maxlen, int flags, iv_kbdhandler h);
 int Message(int icon, const char *title, const char *text, int timeout);
 void SendEvent(void *hproc, int type, int par1, int par2);
+void BookReady(const char *path);
 #define NET_CONNECTED 0x0f00
 int NetConnect(const char *name);
 int QueryNetwork(void);
