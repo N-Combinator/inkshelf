@@ -1,25 +1,46 @@
 name: release
 
-# Builds the shippable artifact — a single ARM 32-bit ELF named inkshelf.app —
-# and attaches it to the GitHub release for the tag that triggered the run, so
-# users can install inkshelf without cloning the 680 MB PocketBook SDK.
+# Builds the shippable binaries and attaches them to the GitHub release for the
+# tag that triggered the run, so nobody has to install a PocketBook SDK.
 #
-#   push a v* tag        -> test, build, attach inkshelf.app + .sha256 to the release
-#   manual dispatch      -> test, build, upload as a workflow artifact only
-#                           (or attach to an existing release if `tag` is given)
+# PocketBook readers come in two userland ABIs, so every release ships two:
+#
+#   inkshelf-<tag>-b288.zip    soft-float, official SDK-B288 — almost every model
+#   inkshelf-<tag>-rk3566.zip  hard-float, for RK3566 readers (InkPad One, ...),
+#                             which only ship /lib/ld-linux-armhf.so.3 and so
+#                             cannot load the soft-float build at all
+#
+#   push a v* tag      -> test, build both, publish both + SHA256SUMS.txt
+#   pull request       -> test, build both, artifacts only (build files changed)
+#   manual dispatch    -> test, build both, upload as workflow artifacts only
+#                         (or publish to an existing release if `tag` is given)
+#
+# Least privilege: the build jobs, which handle vendor SDK files, get a
+# read-only token. Only the publish job, which runs no third-party tooling and
+# only uploads already-built zips, can write to the repository.
 
 on:
   push:
     tags:
       - 'v*'
+  # Build both platforms, without publishing, on pull requests that touch code or
+  # the build — a change that breaks one ABI shows up before it is merged.
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'build.sh'
+      - 'tools/stage-rk3566-sdk.sh'
+      - '.github/workflows/release.yml'
+      - '.github/scripts/**'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build FROM and publish to (blank = build this branch, artifact only)'
+        description: 'Tag to build FROM and publish to (blank = build this branch, artifacts only)'
         required: false
         default: ''
 
-# The .app is uploaded to a release, so the job needs write access to contents.
 permissions:
   contents: read
 
@@ -32,10 +53,14 @@ env:
   # README only), and where we keep the checkout on the runner.
   PB_SDK_BRANCH: '6.5'
   PB_SDK_DIR: ${{ github.workspace }}/../pocketbook-sdk
+  # The RK3566 SDK exists only as a third-party re-upload. Its SHA-256 (and that
+  # of every file taken from it) is pinned in tools/stage-rk3566-sdk.sh, so a
+  # changed upload fails the build instead of changing what we compile against.
+  PB_RK3566_SDK_URL: https://github.com/Sean-on-Git/PocketBook-SDK/releases/download/6.11/SDK-RK3566-6.11.7z
 
 jobs:
-  # Gate: the host test suite needs neither the SDK nor a network, so it is a
-  # cheap way to stop a broken tag from ever producing a downloadable binary.
+  # Gate: the host test suite needs neither SDK nor network, so it is a cheap way
+  # to stop a broken tag from ever producing a downloadable binary.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -46,11 +71,9 @@ jobs:
       - name: Host test gate (ASan + UBSan)
         run: make test
 
-  build:
+  build-b288:
     needs: test
-    runs-on: ubuntu-latest   # the SDK toolchain binaries are Linux x86_64 ELF
-    permissions:
-      contents: write        # needed by `gh release upload`
+    runs-on: ubuntu-latest   # the SDK-B288 toolchain binaries are Linux x86_64 ELF
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,8 +81,8 @@ jobs:
           # tag being published, so build the tag explicitly when one is given —
           # otherwise the release would get a binary built from another commit.
           ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
-          # CMakeLists.txt derives INKSHELF_VERSION from `git describe --tags`,
-          # so the tags have to be present or the about screen shows a bare hash.
+          # CMakeLists.txt derives the version from `git describe --tags`, so the
+          # tags have to be present or the app shows a bare hash.
           fetch-depth: 0
 
       - name: Resolve SDK revision
@@ -74,8 +97,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       # The SDK is ~680 MB of git objects and never changes between runs, so
-      # cache the checkout and key it on the branch head — a moved branch
-      # invalidates the cache instead of silently building against a stale SDK.
+      # cache the checkout and key it on the branch head.
       - name: Cache PocketBook SDK
         id: sdk-cache
         uses: actions/cache@v4
@@ -88,14 +110,12 @@ jobs:
         run: |
           git clone --depth 1 --single-branch --branch "$PB_SDK_BRANCH" \
             https://github.com/pocketbook/SDK_6.3.0 "$PB_SDK_DIR"
-          # Drop the git metadata: only the tree is needed to compile, and it
-          # roughly halves what the cache has to store and restore.
           rm -rf "$PB_SDK_DIR/.git"
 
-      # build.sh does this itself now, but a tag cut before that fix still has
-      # to be buildable — the workflow checks out the tag's source, not main's.
-      # Only the compiler's own dependencies, never the whole SDK usr/lib: it
-      # also holds 2017 glib/icu/expat that would shadow the host's libraries.
+      # build.sh does this itself now, but a tag cut before that fix still
+      # has to be buildable — the workflow checks out the tag's source. Only the
+      # compiler's own dependencies, never the whole SDK usr/lib: it also holds
+      # 2017 glib/icu/expat that would shadow the host's libraries.
       - name: Provide libmpfr.so.4 for the SDK compiler
         run: |
           shim="$RUNNER_TEMP/pb-hostlibs"
@@ -111,65 +131,152 @@ jobs:
           test -x "$PB_SDK_DIR/SDK-B288/usr/bin/arm-obreey-linux-gnueabi-gcc"
           PB_SDK_ROOT="$PB_SDK_DIR/SDK-B288" ./build.sh
 
-      # A host-arch binary would install and then simply fail to launch on the
-      # reader with no useful error, so refuse to publish anything but ARM.
-      - name: Verify the artifact is an ARM binary
+      # A wrong-ABI binary installs fine and then silently never launches, so
+      # check the float ABI and the loader, not just "ARM".
+      - name: Verify the artifact
         run: |
-          file build/inkshelf.app
-          file build/inkshelf.app | grep -Eq 'ELF 32-bit LSB.*\bARM\b' \
-            || { echo "::error::build/inkshelf.app is not an ARM 32-bit ELF"; exit 1; }
+          app=build/inkshelf.app
+          file "$app"
+          readelf -h "$app" | grep -q 'soft-float ABI' \
+            || { echo "::error::$app is not a soft-float ARM binary"; exit 1; }
+          readelf -l "$app" | grep -q '/lib/ld-linux.so.3' \
+            || { echo "::error::$app does not use the soft-float loader"; exit 1; }
 
-      # GitHub rejects release assets whose name ends in .app ("name has a file
-      # extension that is not allowed"), so the binary ships inside a zip. The
-      # checksum file lists both: the zip to check the download, the .app to
-      # check the file that actually lands on the reader.
       - name: Package
-        id: package
-        run: |
-          cd build
-          ver=$(git describe --tags --always --match 'v*' 2>/dev/null || echo dev)
-          zip -j "inkshelf-${ver}.zip" inkshelf.app
-          sha256sum inkshelf.app "inkshelf-${ver}.zip" > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-          echo "zip=inkshelf-${ver}.zip" >> "$GITHUB_OUTPUT"
-          {
-            echo "### inkshelf-${ver}.zip"
-            echo
-            echo '```'
-            cat SHA256SUMS.txt
-            echo '```'
-            echo
-            echo "$(file -b inkshelf.app)"
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: bash .github/scripts/package.sh b288 build
 
       - uses: actions/upload-artifact@v4
         with:
-          name: inkshelf.app
-          path: |
-            build/inkshelf.app
-            build/SHA256SUMS.txt
+          name: release-b288
+          path: dist/
           if-no-files-found: error
 
+  build-rk3566:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      # Tags cut before the RK3566 build existed have no toolchain for it; skip
+      # rather than fail, so they can still be backfilled with the B288 build.
+      - name: Does this source support RK3566?
+        id: support
+        run: |
+          if [ -f cmake/toolchain-armhf.cmake ] && [ -f tools/stage-rk3566-sdk.sh ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::this source predates the RK3566 build — skipping it"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install the distribution armhf cross compiler
+        if: steps.support.outputs.ok == 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
+          command -v 7z >/dev/null || sudo apt-get install -y -q --no-install-recommends p7zip-full
+          arm-linux-gnueabihf-gcc --version | head -1
+
+      - name: SDK archive checksum
+        if: steps.support.outputs.ok == 'true'
+        id: pin
+        run: echo "sha=$(sed -n 's/^ARCHIVE_SHA256=//p' tools/stage-rk3566-sdk.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache RK3566 SDK archive
+        if: steps.support.outputs.ok == 'true'
+        id: rk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/SDK-RK3566.7z
+          key: pb-sdk-rk3566-${{ steps.pin.outputs.sha }}
+
+      - name: Fetch RK3566 SDK archive
+        if: steps.support.outputs.ok == 'true' && steps.rk-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL --retry 3 -o "$RUNNER_TEMP/SDK-RK3566.7z" "$PB_RK3566_SDK_URL"
+
+      # Verifies the archive and each extracted file against pinned checksums,
+      # and takes only headers + link libraries. Nothing from the SDK executes.
+      - name: Stage verified SDK files
+        if: steps.support.outputs.ok == 'true'
+        run: tools/stage-rk3566-sdk.sh "$RUNNER_TEMP/SDK-RK3566.7z" "$RUNNER_TEMP/pb-hf-stage"
+
+      - name: Cross-compile
+        if: steps.support.outputs.ok == 'true'
+        run: PB_PLATFORM=rk3566 PB_HF_STAGE="$RUNNER_TEMP/pb-hf-stage" ./build.sh
+
+      # Besides the ABI/loader check: the binary may only import from libc,
+      # InkView and curl. Anything else would mean a link input slipped in code.
+      # ld-linux-armhf.so.3 is the system dynamic loader — already the program
+      # interpreter — which gcc's default stack protector on Ubuntu pulls in for
+      # __stack_chk_guard; it is not a vendor library.
+      - name: Verify the artifact
+        if: steps.support.outputs.ok == 'true'
+        run: |
+          app=build-rk3566/inkshelf.app
+          file "$app"
+          readelf -h "$app" | grep -q 'hard-float ABI' \
+            || { echo "::error::$app is not a hard-float ARM binary"; exit 1; }
+          readelf -l "$app" | grep -q '/lib/ld-linux-armhf.so.3' \
+            || { echo "::error::$app does not use the armhf loader"; exit 1; }
+          unexpected=$(readelf -d "$app" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' \
+            | grep -vxE 'libc\.so\.6|libm\.so\.6|ld-linux-armhf\.so\.3|libinkview\.so|libcurl\.so\.4' || true)
+          [ -z "$unexpected" ] || { echo "::error::unexpected libraries: $unexpected"; exit 1; }
+
+      - name: Package
+        if: steps.support.outputs.ok == 'true'
+        run: bash .github/scripts/package.sh rk3566 build-rk3566
+
+      - uses: actions/upload-artifact@v4
+        if: steps.support.outputs.ok == 'true'
+        with:
+          name: release-rk3566
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: [build-b288, build-rk3566]
+    # Tag pushes always publish; a manual run only does so when given a tag.
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # the only job allowed to write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
       - name: Attach to release
-        # Tag pushes always publish; a manual run only does so when given a tag.
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
-          ZIP: ${{ steps.package.outputs.zip }}
+          REPO: ${{ github.repository }}
         run: |
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
+          cd dist
+          cat SHA256SUMS-*.txt > SHA256SUMS.txt
+          # A suffixed tag (v1.2.0-rc1) is a test build: publish it as a
+          # pre-release so it never becomes the "Latest release" people install.
+          pre=""
+          case "$TAG" in *-*) pre="--prerelease" ;; esac
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             notes=$(mktemp)
             {
-              echo "Download \`$ZIP\` below, unzip it, and copy \`inkshelf.app\` into"
-              echo "the \`applications/\` folder on the reader — see the"
-              echo "[install guide](https://github.com/${{ github.repository }}#install)."
+              echo "Pick the zip for your reader, unzip it, and copy \`inkshelf.app\` into the"
+              echo "\`applications/\` folder — see [which file do I need?](https://github.com/$REPO#which-file-do-i-need)."
+              echo
+              echo "| File | For |"
+              echo "|---|---|"
+              ls *-rk3566.zip >/dev/null 2>&1 && echo "| \`$(ls *-rk3566.zip)\` | InkPad One and other RK3566 readers |"
+              echo "| \`$(ls *-b288.zip)\` | every other PocketBook |"
               echo
               echo '```'
-              cat build/SHA256SUMS.txt
+              cat SHA256SUMS-*.txt
               echo '```'
             } > "$notes"
-            gh release create "$TAG" --title "inkshelf $TAG" --notes-file "$notes" --generate-notes
+            gh release create "$TAG" --repo "$REPO" --title "inkshelf $TAG" --notes-file "$notes" --generate-notes $pre
           fi
-          gh release upload "$TAG" \
-            "build/$ZIP" build/SHA256SUMS.txt --clobber
+          gh release upload "$TAG" --repo "$REPO" ./*.zip SHA256SUMS.txt --clobber

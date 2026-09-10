@@ -20,8 +20,21 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${ROOT}/build"
 PB_TARGET="arm-obreey-linux-gnueabi"
+
+# Which PocketBook platform to build for:
+#   b288   (default) soft-float SDK-B288 build — every model except the ones below
+#   rk3566 hard-float build for the RK3566 readers (InkPad One, ...), whose
+#          32-bit userland only has /lib/ld-linux-armhf.so.3 and so cannot load
+#          the soft-float binary at all. See cmake/toolchain-armhf.cmake.
+# Each platform gets its own build directory, so switching between them never
+# reuses a CMake cache configured for the other toolchain.
+PB_PLATFORM="${PB_PLATFORM:-b288}"
+case "${PB_PLATFORM}" in
+    b288)   BUILD_DIR="${BUILD_DIR:-${ROOT}/build}" ;;
+    rk3566) BUILD_DIR="${BUILD_DIR:-${ROOT}/build-rk3566}" ;;
+    *)      echo "error: unknown PB_PLATFORM '${PB_PLATFORM}' (expected b288 or rk3566)" >&2; exit 2 ;;
+esac
 
 # The SDK's cc1 is a 2017 gcc 6.3 binary that needs libmpfr.so.4 (mpfr 3.x).
 # Distros have shipped libmpfr.so.6 for years and package no compatible .so.4,
@@ -43,7 +56,32 @@ pb_host_libs() {
     export LD_LIBRARY_PATH="${shim}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 }
 
+# RK3566: the distribution's armhf cross compiler plus headers and link
+# libraries staged from the vendor SDK. Nothing from that SDK is executed.
+cmake_build_rk3566() {
+    if ! command -v arm-linux-gnueabihf-gcc >/dev/null 2>&1; then
+        echo "error: arm-linux-gnueabihf-gcc not found." >&2
+        echo "       Install the distribution cross compiler: apt install gcc-arm-linux-gnueabihf" >&2
+        exit 1
+    fi
+    if [[ ! -f "${PB_HF_STAGE:-/nonexistent}/include/inkview.h" ]]; then
+        echo "error: PB_HF_STAGE must point at the staged RK3566 SDK headers + libraries." >&2
+        echo "       Create it with:  tools/stage-rk3566-sdk.sh /path/to/SDK-RK3566-6.11.7z <stage-dir>" >&2
+        exit 1
+    fi
+    cmake -S "${ROOT}" -B "${BUILD_DIR}" \
+        -DCMAKE_TOOLCHAIN_FILE="${ROOT}/cmake/toolchain-armhf.cmake" \
+        -DCMAKE_BUILD_TYPE=Release
+    cmake --build "${BUILD_DIR}" --parallel
+    echo "==> Built: ${BUILD_DIR}/inkshelf.app (RK3566, hard-float)"
+    echo "==> Install: copy it to the reader's  applications/  folder."
+}
+
 cmake_build() {
+    if [[ "${PB_PLATFORM}" == rk3566 ]]; then
+        cmake_build_rk3566
+        return
+    fi
     # Fail early with a useful message if the cross toolchain isn't reachable.
     # Real SDK layout: $PB_SDK_ROOT/usr/bin/arm-obreey-linux-gnueabi-gcc.
     if ! command -v "${PB_TARGET}-gcc" >/dev/null 2>&1 \

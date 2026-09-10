@@ -18,6 +18,7 @@ output is always a single `build/inkshelf.app` (an ARM 32-bit ELF).
 - [A note on HTTPS / TLS](#a-note-on-https--tls)
 - [Testing](#testing)
 - [Project layout](#project-layout)
+- [RK3566 build (InkPad One)](#rk3566-build-inkpad-one)
 - [Cutting a release](#cutting-a-release)
 
 > **TL;DR** — on a Linux x86_64 host with the SDK in place:
@@ -179,9 +180,55 @@ tests/                    host test gate (no SDK / no network)
 build.sh                  Docker / direct build wrapper (CI-friendly)
 inkshelf-build.sh         one-command build + USB deploy (dev)
 inkshelf-build-wifi.sh    build (optional) + wireless deploy via /deploy (or scp)
+tools/stage-rk3566-sdk.sh extract + verify the RK3566 SDK files the armhf build links against
 Makefile                  build/test + jailbreak deploy (make deploy / deploy-nc)
 .github/workflows/        CI: test + cross-compile + publish the release binary
 ```
+
+## RK3566 build (InkPad One)
+
+The RK3566 readers run 32-bit ARM code with the **hard-float** ABI and ship only
+`/lib/ld-linux-armhf.so.3`, so they need their own build. It is made differently
+from the B288 one, on purpose:
+
+- **Compiler:** the distribution's `arm-linux-gnueabihf-gcc`, not the toolchain
+  inside PocketBook's SDK. That SDK (6.11) is only available as a third-party
+  re-upload ([Sean-on-Git/PocketBook-SDK](https://github.com/Sean-on-Git/PocketBook-SDK/releases/tag/6.11)),
+  so nothing from it is allowed to run on the build machine.
+- **From the SDK we take 18 files and nothing else:** `inkview.h`, `hwconfig.h`,
+  curl's and zlib's headers, and `libinkview.so` + `libcurl.so` to link against.
+  The libraries are consulted only for symbol names; the reader loads its own
+  firmware copies at runtime, so nothing from them ends up in `inkshelf.app`.
+- **Everything is pinned.** `tools/stage-rk3566-sdk.sh` refuses an archive whose
+  SHA-256 differs from the audited one and checks every extracted file against
+  its own pinned hash. Its header records what was verified before pinning: curl
+  headers byte-identical to the GPG-signed 8.16.0 release, zlib headers to 1.3.1,
+  no inline code or process/network calls in the InkView headers, and the whole
+  tree scanned.
+
+Locally, on Debian/Ubuntu — on any host architecture, since the distribution
+compiler also exists for arm64:
+
+```bash
+sudo apt install gcc-arm-linux-gnueabihf 7zip        # p7zip-full on older releases
+curl -fLO https://github.com/Sean-on-Git/PocketBook-SDK/releases/download/6.11/SDK-RK3566-6.11.7z
+tools/stage-rk3566-sdk.sh SDK-RK3566-6.11.7z ~/pb-rk3566-stage
+PB_PLATFORM=rk3566 PB_HF_STAGE=~/pb-rk3566-stage ./build.sh   # -> build-rk3566/inkshelf.app
+```
+
+`PB_PLATFORM=rk3566` selects `cmake/toolchain-armhf.cmake` and its own
+`build-rk3566/` directory, so it never reuses the B288 build's CMake cache. Check
+that the result really is hard-float before copying it anywhere:
+
+```bash
+readelf -h build-rk3566/inkshelf.app | grep 'hard-float ABI'
+readelf -l build-rk3566/inkshelf.app | grep ld-linux-armhf.so.3
+```
+
+**TLS on RK3566:** that firmware's libcurl is 8.16 built against OpenSSL 3, not
+NSS, so the CA-bundle limitation in [A note on HTTPS / TLS](#a-note-on-https--tls)
+probably does not apply there. Peer verification is still disabled on both
+platforms for now.
 
 ## Cutting a release
 
@@ -196,25 +243,39 @@ git push origin v1.2.0
 The workflow then
 
 1. runs the host test gate (a failure here stops the release; no binary ships),
-2. fetches the SDK (shallow clone of branch `6.5`, cached between runs and keyed
-   on that branch's head commit),
-3. cross-compiles via `build.sh` (a Release build, so the binary is stripped),
-4. refuses to publish anything that `file` does not report as an ARM 32-bit ELF,
-5. creates the GitHub release if the tag has none yet, and uploads
-   `inkshelf-<tag>.zip` plus `SHA256SUMS.txt` to it. The binary is zipped
-   because GitHub rejects release assets whose name ends in `.app`
-   (`422: name has a file extension that is not allowed`).
+2. builds both platforms in parallel:
+   - **B288** — shallow clone of the SDK's `6.5` branch (cached, keyed on its head
+     commit), cross-compiled via `build.sh`, refused unless `readelf` reports a
+     soft-float binary that uses `/lib/ld-linux.so.3`;
+   - **RK3566** — the distribution's armhf compiler plus the pinned, verified
+     files from `tools/stage-rk3566-sdk.sh`, refused unless the binary is
+     hard-float, uses `/lib/ld-linux-armhf.so.3`, and links against nothing but
+     libc, InkView and curl;
+3. publishes `inkshelf-<tag>-b288.zip`, `inkshelf-<tag>-rk3566.zip` and a merged
+   `SHA256SUMS.txt`, creating the release if the tag has none yet. The binaries
+   are zipped because GitHub rejects release assets whose name ends in `.app`.
 
-Writing release notes first is fine: if a release for the tag already exists,
-the workflow keeps its notes and only attaches the binaries.
+Publishing is a separate job: it is the only one with write access, and it runs
+no SDK tooling — it just uploads what the build jobs produced. The build jobs get
+a read-only token.
+
+A tag with a suffix — `v1.2.0-rc1` — is published as a **pre-release**, so a
+test build can be handed to someone without becoming the "Latest release" that
+the README's install link points at.
+
+Writing release notes first is fine: if a release for the tag already exists, the
+workflow keeps its notes and only attaches the binaries.
+
+Pull requests that touch the source or the build run the same two builds, without
+publishing, so a change that breaks one platform shows up before it is merged.
 
 The workflow can also be started by hand from the Actions tab (*Run workflow*).
-Leave the `tag` input empty to build whatever branch you picked and get the
-`.app` as a workflow artifact. Give it a tag and it checks that tag out, builds
-it, and attaches the binaries to its release — which is how a tag that was cut
-before this workflow existed (or whose release went out without assets) gets its
-binary. The branch chosen in *Use workflow from* only decides which version of
-the workflow runs; `tag` decides what gets built.
+Leave the `tag` input empty to build whatever branch you picked and get the zips
+as workflow artifacts. Give it a tag and it checks that tag out, builds it, and
+attaches the binaries to its release. A tag older than the RK3566 build simply
+gets the B288 zip: the RK3566 job notices the missing toolchain file and skips.
+The branch chosen in *Use workflow from* only decides which version of the
+workflow runs; `tag` decides what gets built.
 
 ### Versioning
 
