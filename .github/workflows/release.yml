@@ -209,6 +209,9 @@ jobs:
 
       # Besides the ABI/loader check: the binary may only import from libc,
       # InkView and curl. Anything else would mean a link input slipped in code.
+      # ld-linux-armhf.so.3 is the system dynamic loader — already the program
+      # interpreter — which gcc's default stack protector on Ubuntu pulls in for
+      # __stack_chk_guard; it is not a vendor library.
       - name: Verify the artifact
         if: steps.support.outputs.ok == 'true'
         run: |
@@ -219,7 +222,7 @@ jobs:
           readelf -l "$app" | grep -q '/lib/ld-linux-armhf.so.3' \
             || { echo "::error::$app does not use the armhf loader"; exit 1; }
           unexpected=$(readelf -d "$app" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' \
-            | grep -vxE 'libc\.so\.6|libm\.so\.6|libinkview\.so|libcurl\.so\.4' || true)
+            | grep -vxE 'libc\.so\.6|libm\.so\.6|ld-linux-armhf\.so\.3|libinkview\.so|libcurl\.so\.4' || true)
           [ -z "$unexpected" ] || { echo "::error::unexpected libraries: $unexpected"; exit 1; }
 
       - name: Package
