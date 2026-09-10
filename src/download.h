@@ -6,11 +6,9 @@
  * to a temp path first and renamed into place only on success, so a partial
  * download never appears in the library.
  *
- * After a successful save the function attempts a best-effort library rescan
- * via SendEvent; this is not officially documented by PocketBook but is the
- * accepted community approach. If the rescan event is unavailable the file
- * will appear after the user triggers a manual library scan or restarts the
- * reader.
+ * After a successful save the function tells the firmware about the new file
+ * with InkView's BookReady(), so it shows up in the library straight away
+ * instead of after a manual rescan or a reboot.
  */
 
 #ifndef INKSHELF_DOWNLOAD_H
@@ -43,9 +41,5 @@ int download_book(const char *url,
                   dl_progress_cb cb, void *ud,
                   char out_path[DL_PATH_MAX],
                   char errbuf[DL_ERR_MAX]);
-
-/* Best-effort library rescan signal. Returns 0 if the rescan event was sent,
- * -1 if it could not be sent (not fatal — file is on disk regardless). */
-int download_rescan_library(void);
 
 #endif /* INKSHELF_DOWNLOAD_H */

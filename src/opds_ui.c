@@ -710,7 +710,7 @@ static void book_do_download(screen_t *self)
     } else {
         char msg[DL_PATH_MAX + 64];
         snprintf(msg, sizeof(msg),
-                 "Saved to:\n%s\n\nBook will appear in Library after rescan.",
+                 "Saved to your library:\n%s",
                  out_path);
         Message(ICON_INFORMATION, "inkshelf", msg, 5000);
     }

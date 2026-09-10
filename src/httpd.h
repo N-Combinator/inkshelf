@@ -58,6 +58,23 @@ void httpd_stop(void);
 void httpd_status(httpd_status_t *out);
 
 /*
+ * Books saved since the last call, oldest first, as absolute paths. The accept
+ * thread queues every successful upload; the UI thread drains the queue and
+ * hands each path to the firmware (BookReady), since InkView must not be
+ * called from the server thread. Returns 1 and fills `out` while entries
+ * remain, 0 once the queue is empty. Thread-safe.
+ */
+#define HTTPD_DIR_MAX       600
+#define HTTPD_PATH_MAX      (HTTPD_DIR_MAX + 1 + HTTPD_NAME_MAX)
+#define HTTPD_RECEIVED_MAX  32
+int httpd_take_received(char *out, size_t outsz);
+
+/* Queue one saved upload for httpd_take_received(). Called by the accept
+ * thread; exposed for host tests. Returns 0, or -1 when the queue is full (the
+ * book is on disk either way, it just is not announced). Thread-safe. */
+int httpd_queue_received(const char *path);
+
+/*
  * Set the access PIN every mutating request (POST /drop, POST /deploy) must
  * present in an "X-Inkshelf-PIN" header. Pass "" or NULL to disable the gate
  * (server is then open). Thread-safe; takes effect immediately, so the

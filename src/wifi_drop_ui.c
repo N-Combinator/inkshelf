@@ -11,6 +11,10 @@
  * There is no explicit timer event in the subset of InkView we target, so
  * status is refreshed on every key event other than Back — the page-turn
  * buttons become a natural "refresh" gesture.
+ *
+ * Received books are announced to the firmware (BookReady) on every refresh
+ * and when the screen is left, so they show up in the library without a
+ * rescan or reboot. That happens here, on the UI thread, never in the server.
  */
 
 #include <ctype.h>
@@ -107,8 +111,17 @@ static void prompt_pin(const char *title)
 /* drawing                                                             */
 /* ------------------------------------------------------------------ */
 
+/* Hand every book the server saved since last time to the firmware. */
+static void wd_announce_received(void)
+{
+    char path[HTTPD_PATH_MAX];
+    while (httpd_take_received(path, sizeof path))
+        BookReady(path);
+}
+
 static void wd_draw(screen_t *self)
 {
+    wd_announce_received();
     wifi_drop_state *st = self->data;
     const ui_fonts *f = ui_get_fonts();
 
@@ -240,6 +253,8 @@ static void wd_destroy(screen_t *self)
         httpd_stop();
         st->started = 0;
     }
+    /* After the server is down, so nothing can still land in the queue. */
+    wd_announce_received();
 }
 
 static int wd_key(screen_t *self, int key)

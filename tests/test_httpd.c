@@ -328,6 +328,35 @@ static void test_pin_auth(void)
 }
 
 /* config.c round-trip against a temp file (never touches the device path). */
+static void test_received_queue(void)
+{
+    printf("received-book queue:\n");
+    char p[HTTPD_PATH_MAX];
+    CHECK(httpd_take_received(p, sizeof p) == 0, "empty queue yields nothing");
+    CHECK(httpd_queue_received("/mnt/ext1/Books/a.epub") == 0, "queue a");
+    CHECK(httpd_queue_received("/mnt/ext1/Books/b.fb2") == 0,  "queue b");
+    CHECK(httpd_take_received(p, sizeof p) == 1 && strcmp(p, "/mnt/ext1/Books/a.epub") == 0,
+          "first taken is the oldest");
+    CHECK(httpd_take_received(p, sizeof p) == 1 && strcmp(p, "/mnt/ext1/Books/b.fb2") == 0,
+          "then the next one");
+    CHECK(httpd_take_received(p, sizeof p) == 0, "drained queue is empty again");
+
+    char name[64];
+    int accepted = 0;
+    for (int i = 0; i < HTTPD_RECEIVED_MAX + 3; i++) {
+        snprintf(name, sizeof name, "/mnt/ext1/Books/%d.epub", i);
+        if (httpd_queue_received(name) == 0) accepted++;
+    }
+    CHECK(accepted == HTTPD_RECEIVED_MAX, "a full queue refuses further entries");
+    int taken = 0, ordered = 1;
+    while (httpd_take_received(p, sizeof p)) {
+        snprintf(name, sizeof name, "/mnt/ext1/Books/%d.epub", taken);
+        if (strcmp(p, name) != 0) ordered = 0;
+        taken++;
+    }
+    CHECK(taken == HTTPD_RECEIVED_MAX && ordered, "wrapped ring buffer keeps FIFO order");
+}
+
 static void test_config(void)
 {
     printf("config store:\n");
@@ -364,6 +393,7 @@ int main(void)
     test_deploy();
     test_local_ip();
     test_pin_auth();
+    test_received_queue();
     test_config();
     printf("\n%s\n", g_fail ? "TESTS FAILED" : "ALL TESTS PASSED");
     return g_fail ? 1 : 0;

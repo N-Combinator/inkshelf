@@ -1,5 +1,5 @@
 /*
- * download.c — book download + library rescan (see download.h).
+ * download.c — book download into the library (see download.h).
  *
  * Uses library.h for path / naming logic, libcurl for the transfer, and the
  * older CURLOPT_PROGRESSFUNCTION API (available in every SDK libcurl version,
@@ -151,22 +151,12 @@ int download_book(const char *url,
 
     if (cb) cb(100, ud);
 
-    download_rescan_library();
+    /* Tell the firmware a new book is in place so the library lists it now.
+     * Only once the file is final: there is no call to withdraw an announced
+     * book, so a failed download must never have been announced. */
+    BookReady(out_path);
     return 0;
 
 #undef FAIL
 }
 
-int download_rescan_library(void)
-{
-    /* EVT_RESCAN (6) is the accepted community approach for triggering a
-     * PocketBook library index refresh from SDK apps. Not officially
-     * documented; may silently do nothing on some firmware versions — the
-     * user will see the book in the library after a manual rescan or reboot
-     * regardless, since the file is on disk. */
-#ifndef EVT_RESCAN
-#define EVT_RESCAN 6
-#endif
-    SendEvent(NULL, EVT_RESCAN, 0, 0);
-    return 0;
-}

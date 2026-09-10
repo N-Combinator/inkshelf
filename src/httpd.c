@@ -575,6 +575,9 @@ static struct {
     int             started;
     httpd_status_t  st;
     char            pin[HTTPD_PIN_MAX];     /* "" = gate disabled */
+    /* Ring buffer of saved uploads not yet announced to the firmware. */
+    char            received[HTTPD_RECEIVED_MAX][HTTPD_PATH_MAX];
+    int             rq_head, rq_len;
 } S = { .listen_fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 
 int httpd_pin_authorized(const char *configured, const char *provided)
@@ -674,6 +677,34 @@ static void record_upload(const char *name, unsigned long long bytes)
     S.st.last_bytes = bytes;
     S.st.last_error[0] = '\0';
     pthread_mutex_unlock(&S.lock);
+}
+
+int httpd_queue_received(const char *path)
+{
+    int rc = -1;
+    pthread_mutex_lock(&S.lock);
+    if (S.rq_len < HTTPD_RECEIVED_MAX) {
+        int i = (S.rq_head + S.rq_len) % HTTPD_RECEIVED_MAX;
+        snprintf(S.received[i], sizeof S.received[i], "%s", path);
+        S.rq_len++;
+        rc = 0;
+    }
+    pthread_mutex_unlock(&S.lock);
+    return rc;
+}
+
+int httpd_take_received(char *out, size_t outsz)
+{
+    int got = 0;
+    pthread_mutex_lock(&S.lock);
+    if (S.rq_len > 0) {
+        snprintf(out, outsz, "%s", S.received[S.rq_head]);
+        S.rq_head = (S.rq_head + 1) % HTTPD_RECEIVED_MAX;
+        S.rq_len--;
+        got = 1;
+    }
+    pthread_mutex_unlock(&S.lock);
+    return got;
 }
 
 static void record_error(const char *msg)
@@ -801,7 +832,7 @@ static void handle_conn(int cfd)
         return;
     }
 
-    char dir[600];
+    char dir[HTTPD_DIR_MAX];
     if (library_dir(dir, sizeof dir) != 0 || library_ensure_dir(dir) != 0) {
         record_error("library directory unavailable");
         send_response(cfd, "500 Internal Server Error", "text/plain",
@@ -820,6 +851,9 @@ static void handle_conn(int cfd)
                           NULL, 0, HTTPD_MAX_UPLOAD,
                           name, sizeof name, &bytes, err, sizeof err) == 0) {
         record_upload(name, bytes);
+        char full[HTTPD_PATH_MAX];
+        snprintf(full, sizeof full, "%s/%s", dir, name);
+        httpd_queue_received(full);
         char msg[400];
         snprintf(msg, sizeof msg, "Saved %s (%llu bytes) to your library.\n",
                  name, bytes);
