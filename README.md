@@ -85,10 +85,10 @@ it and copy the `rk3566` one instead. Nothing gets installed either way, so
 picking the wrong one is harmless. Releases up to v1.1.2 contain only the B288
 build.
 
-**Status of the RK3566 build:** built against PocketBook's SDK 6.11 and checked
-to be a hard-float binary, but not yet run on a device by the maintainers. If you
-try it, please open an issue saying whether it starts, with your model and
-firmware version.
+**Status of the RK3566 build:** confirmed on an InkPad One with firmware 6.11 —
+the app starts, WiFi Book Drop receives uploads, and OPDS catalogs work (tested
+against a Calibre content server). If you run it on another RK3566 model, please
+open an issue naming the model and firmware version.
 
 ## Features
 
