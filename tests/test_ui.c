@@ -58,6 +58,16 @@ int main(void)
     CHECK(ui_nav_classify(103) == UI_NAV_NONE,             "evdev 103 is NOT a nav key");
     CHECK(ui_nav_classify(0)   == UI_NAV_NONE,             "unknown key -> NONE");
 
+    /* Root-screen header buttons. The stub nav_depth() above returns 1 (root),
+     * and on the 758 px stub screen the corner button spans x 606..734,
+     * y 12..60 (PAD_X 24, 128x48, centred in the 72 px header). */
+    printf("header buttons on the root screen:\n");
+    CHECK(ui_exit_button_hit(670, 36),  "tap on the Exit button hits");
+    CHECK(ui_exit_button_hit(600, 70),  "near-miss inside the forgiving margin still hits");
+    CHECK(!ui_exit_button_hit(100, 36), "tap on the left of the header is not Exit");
+    CHECK(!ui_exit_button_hit(670, 300),"tap below the header is not Exit");
+    CHECK(!ui_back_button_hit(670, 36), "root screen has no Back button to hit");
+
     if (g_fail) { printf("FAILED: %d\n", g_fail); return 1; }
     printf("ui: all passed\n");
     return 0;

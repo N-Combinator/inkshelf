@@ -116,7 +116,8 @@ void DrawRect(int a, int b, int c, int d, int e) { (void)a; (void)b; (void)c; (v
 void FillArea(int a, int b, int c, int d, int e) { (void)a; (void)b; (void)c; (void)d; (void)e; }
 void FullUpdate(void) {}
 void PartialUpdate(int a, int b, int c, int d) { (void)a; (void)b; (void)c; (void)d; }
-void CloseApp(void) {}
+static int g_closeapp_calls;
+void CloseApp(void) { g_closeapp_calls++; }
 int Message(int i, const char *t, const char *x, int to) { (void)i; (void)t; (void)x; (void)to; return 0; }
 int NetConnect(const char *name) { (void)name; return 0; }
 /* Host: always report the link as connected so net_wait_online() takes its
@@ -203,6 +204,14 @@ void InkViewMain(int (*h)(int, int, int))
     h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> WiFi Drop screen (starts stub server) */
     h(EVT_KEYPRESS, IV_KEY_NEXT, 0);    /* refresh (any non-Back key) */
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> back to main menu (stops stub server) */
+
+    /* --- 4) Exit button on the home screen -------------------------------- */
+    printf("home screen exit:\n");
+    CHECK(g_closeapp_calls == 0, "Back from sub-screens never closes the app");
+    CHECK(screen_has("Exit"), "home screen draws an Exit button");
+    h(EVT_POINTERUP, 670, 36);          /* tap Exit (top-right corner) */
+    CHECK(g_closeapp_calls == 1, "tapping Exit on the home screen closes the app");
+
     h(EVT_EXIT, 0, 0);
 
     if (g_fail) { printf("opds search scope: FAILED (%d)\n", g_fail); exit(1); }

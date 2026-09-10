@@ -39,6 +39,13 @@ void ui_draw_footer(const char *hint);
  * top of their on_pointer handler and nav_pop() when it returns true. */
 int  ui_back_button_hit(int x, int y);
 
+/* The root screen's counterpart: an on-screen "Exit" button in the same corner
+ * where every other screen shows Back, so the app can be closed by touch on
+ * models without a hardware Back/Home key. Both are no-ops (hit returns 0)
+ * anywhere but the root screen. */
+void ui_draw_exit_button(void);
+int  ui_exit_button_hit(int x, int y);
+
 /* Centred primary action button (e.g. Download), drawn just above the footer
  * so an action is reachable by touch on key-less PocketBook models. Draw it
  * with ui_draw_action_button(), route taps through ui_action_button_hit(),
