@@ -21,8 +21,8 @@
 
 /* On-screen primary action button (e.g. Download), drawn centred just above
  * the footer so it is reachable by touch on key-less PocketBook models. */
-#define ACTION_H        64
-#define ACTION_MAX_W    400
+#define ACTION_H        64      /* minimum primary-button height (px) */
+#define ACTION_H_DIV    14      /* ...or 1/14 of the screen height, if taller */
 #define ACTION_MARGIN   12
 
 static ui_fonts g_fonts;
@@ -132,15 +132,16 @@ void ui_draw_footer(const char *hint)
 }
 
 /* Geometry of the centred action button (just above the footer). */
+/* Full content width, and tall in proportion to the panel: a fixed 64x400 px
+ * box was about 7x45 mm on a 1872 px InkPad One and went unnoticed. */
 static void action_button_rect(int *x, int *y, int *bw, int *bh)
 {
-    int w = ScreenWidth();
-    int aw = w - 2 * PAD_X;
-    if (aw > ACTION_MAX_W) aw = ACTION_MAX_W;
-    *bw = aw;
-    *bh = ACTION_H;
-    *x = (w - aw) / 2;
-    *y = ScreenHeight() - FOOTER_H - ACTION_MARGIN - ACTION_H;
+    int h = ScreenHeight() / ACTION_H_DIV;
+    if (h < ACTION_H) h = ACTION_H;
+    *bw = ScreenWidth() - 2 * PAD_X;
+    *bh = h;
+    *x = PAD_X;
+    *y = ScreenHeight() - FOOTER_H - ACTION_MARGIN - h;
 }
 
 int ui_action_button_top(void)
@@ -154,10 +155,10 @@ void ui_draw_action_button(const char *label)
 {
     int x, y, bw, bh;
     action_button_rect(&x, &y, &bw, &bh);
-    /* Double-stroked border so the tappable target reads clearly on e-ink. */
-    DrawRect(x, y, bw, bh, BLACK);
-    DrawRect(x + 1, y + 1, bw - 2, bh - 2, BLACK);
-    SetFont(g_fonts.item, BLACK);
+    /* Filled, with a bold white label: the one primary action on the screen
+     * should be the first thing the eye lands on, not another outlined box. */
+    FillArea(x, y, bw, bh, BLACK);
+    SetFont(g_fonts.title, WHITE);
     DrawTextRect(x, y, bw, bh, label ? label : "", ALIGN_CENTER | VALIGN_MIDDLE);
 }
 

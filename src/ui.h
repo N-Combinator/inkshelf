@@ -46,8 +46,10 @@ int  ui_back_button_hit(int x, int y);
 void ui_draw_exit_button(void);
 int  ui_exit_button_hit(int x, int y);
 
-/* Centred primary action button (e.g. Download), drawn just above the footer
- * so an action is reachable by touch on key-less PocketBook models. Draw it
+/* Primary action button (e.g. Download): full content width, filled, drawn just
+ * above the footer so an action is reachable by touch on key-less PocketBook
+ * models. At least 64 px tall and 1/14 of the screen height on larger panels,
+ * so it stays prominent on high-resolution readers. Draw it
  * with ui_draw_action_button(), route taps through ui_action_button_hit(),
  * and keep body content above ui_action_button_top() so they never overlap. */
 void ui_draw_action_button(const char *label);
