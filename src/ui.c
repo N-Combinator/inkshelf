@@ -98,6 +98,26 @@ int ui_back_button_hit(int x, int y)
     return x >= bx - 8 && x <= bx + bw + 8 && y >= 0 && y <= HEADER_H;
 }
 
+void ui_draw_exit_button(void)
+{
+    if (nav_depth() > 1) return;
+    int bx, by, bw, bh;
+    back_button_rect(&bx, &by, &bw, &bh);
+    DrawRect(bx, by, bw, bh, BLACK);
+    DrawRect(bx + 1, by + 1, bw - 2, bh - 2, BLACK);
+    SetFont(g_fonts.sub, BLACK);
+    DrawTextRect(bx, by, bw, bh, "Exit", ALIGN_CENTER | VALIGN_MIDDLE);
+}
+
+int ui_exit_button_hit(int x, int y)
+{
+    if (nav_depth() > 1) return 0;
+    int bx, by, bw, bh;
+    back_button_rect(&bx, &by, &bw, &bh);
+    /* Same forgiving target as Back: the drawn box plus a few px, full header height. */
+    return x >= bx - 8 && x <= bx + bw + 8 && y >= 0 && y <= HEADER_H;
+}
+
 void ui_draw_footer(const char *hint)
 {
     int w = ScreenWidth();

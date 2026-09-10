@@ -5,6 +5,8 @@
  * top (name, tagline, author, repo, build version) and two large entry buttons
  * filling the lower part of the screen. The buttons are navigated with the
  * hardware up/down keys (selection drawn inverted) or by tapping directly.
+ * Back/Home closes the app, and so does the on-screen Exit button in the
+ * top-right corner — the only way out on readers without those keys.
  *
  * INKSHELF_VERSION is injected by CMake (git describe); the host test gate
  * compiles without it, so a "dev" fallback keeps the build self-contained.
@@ -170,6 +172,7 @@ static void menu_show(screen_t *self)
 
     ClearScreen();
     draw_about();
+    ui_draw_exit_button();
     for (int i = 0; i < BTN_COUNT; i++)
         draw_button(i, i == st->selected);
     ui_draw_footer("Up/Down to move \xC2\xB7 OK or tap to open");
@@ -222,6 +225,10 @@ static int menu_key(screen_t *self, int key)
 static int menu_pointer(screen_t *self, int x, int y)
 {
     menu_state *st = self->data;
+    if (ui_exit_button_hit(x, y)) {
+        CloseApp();
+        return 1;
+    }
     int idx = button_at(x, y);
     if (idx < 0) return 0;
 
