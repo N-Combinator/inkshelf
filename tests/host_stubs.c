@@ -118,12 +118,21 @@ void FullUpdate(void) {}
 void PartialUpdate(int a, int b, int c, int d) { (void)a; (void)b; (void)c; (void)d; }
 static int g_closeapp_calls;
 static int  g_book_ready_calls;
+static char g_book_calls[32];      /* "P"/"R" per call, in order */
 static char g_book_ready_last[256];
 void BookReady(const char *path)
 {
     g_book_ready_calls++;
     snprintf(g_book_ready_last, sizeof g_book_ready_last, "%s", path);
+    strncat(g_book_calls, "R", sizeof g_book_calls - strlen(g_book_calls) - 1);
 }
+void BookPreparing(const char *path)
+{
+    (void)path;
+    strncat(g_book_calls, "P", sizeof g_book_calls - strlen(g_book_calls) - 1);
+}
+void SetPanelType(int type) { (void)type; }
+int PanelHeight(void) { return 0; }
 void CloseApp(void) { g_closeapp_calls++; }
 int Message(int i, const char *t, const char *x, int to) { (void)i; (void)t; (void)x; (void)to; return 0; }
 int NetConnect(const char *name) { (void)name; return 0; }
@@ -222,6 +231,8 @@ void InkViewMain(int (*h)(int, int, int))
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> back to main menu (stops stub server) */
     CHECK(g_book_ready_calls == 2 && strcmp(g_book_ready_last, "/mnt/ext1/Books/Uploaded Two.fb2") == 0,
           "a book received after the last refresh is announced when leaving");
+    CHECK(strcmp(g_book_calls, "PRPR") == 0,
+          "each book is announced as BookPreparing then BookReady");
 
     /* --- 4) Exit button on the home screen -------------------------------- */
     printf("home screen exit:\n");

@@ -144,6 +144,11 @@ int download_book(const char *url,
     }
     if (st.written == 0) { remove(tmp_path); FAIL("Empty response"); }
 
+    /* Announce the book as the file lands: the firmware pairs BookPreparing
+      * with BookReady, and BookReady alone left the library unchanged on an
+      * InkPad One. Preparing sits right before the rename, so a failure cannot
+      * leave a placeholder for more than the rename itself. */
+    BookPreparing(out_path);
     if (rename(tmp_path, out_path) != 0) {
         remove(tmp_path);
         FAIL(strerror(errno));

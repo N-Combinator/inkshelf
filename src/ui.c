@@ -24,6 +24,8 @@
 #define ACTION_H        64      /* minimum primary-button height (px) */
 #define ACTION_H_DIV    14      /* ...or 1/14 of the screen height, if taller */
 #define ACTION_MARGIN   12
+#define PAGER_W         150     /* page button width inside the footer */
+#define PAGER_GAP       8
 
 static ui_fonts g_fonts;
 
@@ -46,6 +48,16 @@ void ui_fonts_close(void)
 const ui_fonts *ui_get_fonts(void)
 {
     return &g_fonts;
+}
+
+int ui_screen_height(void)
+{
+    int panel = PanelHeight();
+    int h = ScreenHeight() - (panel > 0 ? panel : 0);
+    /* A panel taller than a quarter of the screen is not credible; rather than
+     * lay out into a sliver, fall back to the full screen. */
+    if (h < ScreenHeight() * 3 / 4) h = ScreenHeight();
+    return h;
 }
 
 int ui_header_height(void) { return HEADER_H; }
@@ -88,6 +100,46 @@ void ui_draw_header(const char *title)
     DrawLine(0, HEADER_H - 1, w, HEADER_H - 1, BLACK);
 }
 
+
+static void pager_rect(int dir, int *x, int *y, int *w, int *h)
+{
+    *w = PAGER_W;
+    *h = FOOTER_H - 2 * PAGER_GAP;
+    *y = ui_screen_height() - FOOTER_H + PAGER_GAP;
+    *x = (dir < 0) ? PAD_X : ScreenWidth() - PAD_X - PAGER_W;
+}
+
+void ui_draw_pager(int show_prev, int show_next)
+{
+    int x, y, w, h;
+    SetFont(g_fonts.sub, BLACK);
+    if (show_prev) {
+        pager_rect(-1, &x, &y, &w, &h);
+        DrawRect(x, y, w, h, BLACK);
+        DrawRect(x + 1, y + 1, w - 2, h - 2, BLACK);
+        DrawTextRect(x, y, w, h, "\xE2\x96\xB2 Page", ALIGN_CENTER | VALIGN_MIDDLE);
+    }
+    if (show_next) {
+        pager_rect(+1, &x, &y, &w, &h);
+        DrawRect(x, y, w, h, BLACK);
+        DrawRect(x + 1, y + 1, w - 2, h - 2, BLACK);
+        DrawTextRect(x, y, w, h, "Page \xE2\x96\xBC", ALIGN_CENTER | VALIGN_MIDDLE);
+    }
+}
+
+int ui_pager_hit(int px, int py)
+{
+    int x, y, w, h;
+    for (int dir = -1; dir <= 1; dir += 2) {
+        pager_rect(dir, &x, &y, &w, &h);
+        /* Forgiving target: the whole footer band over the button's columns. */
+        if (px >= x - 8 && px <= x + w + 8 &&
+            py >= ui_screen_height() - FOOTER_H && py <= ui_screen_height())
+            return dir;
+    }
+    return 0;
+}
+
 int ui_back_button_hit(int x, int y)
 {
     if (nav_depth() <= 1) return 0;
@@ -121,13 +173,14 @@ int ui_exit_button_hit(int x, int y)
 void ui_draw_footer(const char *hint)
 {
     int w = ScreenWidth();
-    int h = ScreenHeight();
+    int h = ui_screen_height();
     int y = h - FOOTER_H;
 
     FillArea(0, y, w, FOOTER_H, WHITE);
     DrawLine(0, y, w, y, LGRAY);
     SetFont(g_fonts.sub, DGRAY);
-    DrawTextRect(PAD_X, y, w - 2 * PAD_X, FOOTER_H,
+    /* Leave room for the page buttons at both ends. */
+    DrawTextRect(PAD_X + PAGER_W, y, w - 2 * (PAD_X + PAGER_W), FOOTER_H,
                  hint ? hint : "", ALIGN_CENTER | VALIGN_MIDDLE);
 }
 
@@ -136,12 +189,12 @@ void ui_draw_footer(const char *hint)
  * box was about 7x45 mm on a 1872 px InkPad One and went unnoticed. */
 static void action_button_rect(int *x, int *y, int *bw, int *bh)
 {
-    int h = ScreenHeight() / ACTION_H_DIV;
+    int h = ui_screen_height() / ACTION_H_DIV;
     if (h < ACTION_H) h = ACTION_H;
     *bw = ScreenWidth() - 2 * PAD_X;
     *bh = h;
     *x = PAD_X;
-    *y = ScreenHeight() - FOOTER_H - ACTION_MARGIN - h;
+    *y = ui_screen_height() - FOOTER_H - ACTION_MARGIN - h;
 }
 
 int ui_action_button_top(void)
@@ -193,7 +246,7 @@ void ui_list_init(ui_list *list, const ui_list_item *items, int count)
     list->row_h = 30 /*item*/ + 24 /*sub*/ + 2 * ROW_PAD_Y;
 
     list->area_y = HEADER_H;
-    list->area_h = ScreenHeight() - HEADER_H - FOOTER_H;
+    list->area_h = ui_screen_height() - HEADER_H - FOOTER_H;
     list->per_page = list->area_h / list->row_h;
     if (list->per_page < 1) list->per_page = 1;
 }
@@ -202,7 +255,7 @@ void ui_list_set_top_inset(ui_list *list, int px)
 {
     if (px < 0) px = 0;
     list->area_y = HEADER_H + px;
-    list->area_h = ScreenHeight() - HEADER_H - FOOTER_H - px;
+    list->area_h = ui_screen_height() - HEADER_H - FOOTER_H - px;
     if (list->area_h < list->row_h) list->area_h = list->row_h;
     list->per_page = list->area_h / list->row_h;
     if (list->per_page < 1) list->per_page = 1;

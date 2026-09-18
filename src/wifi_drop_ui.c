@@ -115,8 +115,11 @@ static void prompt_pin(const char *title)
 static void wd_announce_received(void)
 {
     char path[HTTPD_PATH_MAX];
-    while (httpd_take_received(path, sizeof path))
+    while (httpd_take_received(path, sizeof path)) {
+        /* The firmware pairs the two calls; BookReady on its own did nothing. */
+        BookPreparing(path);
         BookReady(path);
+    }
 }
 
 static void wd_draw(screen_t *self)
@@ -152,7 +155,7 @@ static void wd_draw(screen_t *self)
         char msg[300];
         snprintf(msg, sizeof msg, "Server could not start.\n\n%s", st->start_err);
         SetFont(f->item, BLACK);
-        DrawTextRect(24, cy, cw, ScreenHeight() - cy - fh - 24,
+        DrawTextRect(24, cy, cw, ui_screen_height() - cy - fh - 24,
                      msg, ALIGN_CENTER | VALIGN_MIDDLE);
         ui_draw_footer("Back to return");
         ui_flush_full();

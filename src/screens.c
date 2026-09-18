@@ -62,7 +62,7 @@ static ifont *hero_font(void)
 static void button_rect(int i, int *x, int *y, int *w, int *h)
 {
     int sw = ScreenWidth();
-    int sh = ScreenHeight();
+    int sh = ui_screen_height();
     int zone_top    = ABOUT_END_Y + 32;          /* 32 px gap below divider */
     int zone_bottom = sh - ui_footer_height() - 48;
     int avail       = zone_bottom - zone_top;
