@@ -20,6 +20,7 @@ static int g_fail;
 /* ---- minimal InkView stubs so ui.c links (only the draw helpers it calls;
  * the test never paints anything) -------------------------------------- */
 static int g_sw = 758, g_sh = 1024;     /* 6" panel unless a test changes it */
+static int g_panel;                     /* firmware panel height, 0 = none */
 int  ScreenWidth(void)  { return g_sw; }
 int  ScreenHeight(void) { return g_sh; }
 ifont *OpenFont(const char *n, int s, int a) { (void)n; (void)s; (void)a; return (ifont *)1; }
@@ -30,6 +31,8 @@ void DrawLine(int a,int b,int c,int d,int e) { (void)a;(void)b;(void)c;(void)d;(
 void DrawRect(int a,int b,int c,int d,int e) { (void)a;(void)b;(void)c;(void)d;(void)e; }
 void FillArea(int a,int b,int c,int d,int e) { (void)a;(void)b;(void)c;(void)d;(void)e; }
 void FullUpdate(void) {}
+int  PanelHeight(void) { return g_panel; }
+void SetPanelType(int type) { (void)type; }
 /* ui.c's header chrome asks the nav stack how deep it is. */
 int  nav_depth(void) { return 1; }
 
@@ -84,6 +87,29 @@ int main(void)
     CHECK(ui_action_button_hit(1370, 1737),"spans the content width: tap near the right edge hits");
     CHECK(!ui_action_button_hit(702, 1650),"tap above the button misses");
     g_sw = 758; g_sh = 1024;
+
+    /* A firmware panel offsets the app's framebuffer, so laying out to the
+     * full ScreenHeight() wrapped the bottom of the page onto the top of the
+     * screen: on an InkPad One (6.11) a 136 px panel split the book page in
+     * two, 136 px out of place. */
+    printf("layout under a 136 px firmware panel (1404x1872):\n");
+    g_sw = 1404; g_sh = 1872; g_panel = 136;
+    CHECK(ui_screen_height() == 1736,       "usable height excludes the panel");
+    CHECK(ui_action_button_top() < 1736,    "the action button stays inside it");
+    CHECK(ui_action_button_hit(702, 1600),  "tap inside the button hits");
+    CHECK(!ui_action_button_hit(702, 1800), "nothing sits in the wrapped strip");
+    CHECK(ui_pager_hit(100, 1700) == -1,    "previous-page button is in the footer");
+    CHECK(ui_pager_hit(1300, 1700) == 1,    "next-page button at the other end");
+    CHECK(ui_pager_hit(702, 1700) == 0,     "the hint between them is not a page tap");
+    g_panel = 1500;
+    CHECK(ui_screen_height() == 1872,       "an implausible panel height is ignored");
+
+    printf("page buttons on a 758x1024 panel:\n");
+    g_sw = 758; g_sh = 1024; g_panel = 0;
+    CHECK(ui_pager_hit(99, 1000) == -1,     "tap on the previous-page button");
+    CHECK(ui_pager_hit(659, 1000) == 1,     "tap on the next-page button");
+    CHECK(ui_pager_hit(379, 1000) == 0,     "tap on the hint between them");
+    CHECK(ui_pager_hit(99, 900) == 0,       "tap above the footer is not paging");
 
     if (g_fail) { printf("FAILED: %d\n", g_fail); return 1; }
     printf("ui: all passed\n");

@@ -78,6 +78,10 @@ void OpenKeyboard(const char *title, char *buf, int maxlen, int flags, iv_kbdhan
 int Message(int icon, const char *title, const char *text, int timeout);
 void SendEvent(void *hproc, int type, int par1, int par2);
 void BookReady(const char *path);
+void BookPreparing(const char *path);
+void SetPanelType(int type);
+int PanelHeight(void);
+#define PANEL_DISABLED 0
 #define NET_CONNECTED 0x0f00
 int NetConnect(const char *name);
 int QueryNetwork(void);

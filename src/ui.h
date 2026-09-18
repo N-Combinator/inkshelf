@@ -29,6 +29,12 @@ const ui_fonts *ui_get_fonts(void);
  * stack is deeper than the root screen, so Back is reachable by touch on any
  * PocketBook regardless of its hardware key layout (some models are
  * touch-only). Screens route taps through ui_back_button_hit(). */
+/* Usable screen height: the panel the firmware may keep at the top offsets the
+ * app's framebuffer, and drawing past this wraps around to the top of the
+ * screen (an InkPad One on 6.11 showed the page split in two). main.c switches
+ * the panel off; this stays correct if some firmware keeps it anyway. Use it
+ * for layout instead of ScreenHeight(). */
+int  ui_screen_height(void);
 int  ui_header_height(void);
 int  ui_footer_height(void);
 void ui_draw_header(const char *title);
@@ -38,6 +44,14 @@ void ui_draw_footer(const char *hint);
  * the root screen (no button is drawn there). Screens should call this at the
  * top of their on_pointer handler and nav_pop() when it returns true. */
 int  ui_back_button_hit(int x, int y);
+
+/* Page buttons drawn inside the footer strip, for readers with no hardware
+ * page keys at all (the InkPad One has only a power button). Draw them with
+ * the list's ability to move in each direction; route taps through
+ * ui_pager_hit(), which returns -1 for the previous page, +1 for the next and
+ * 0 for a tap elsewhere. */
+void ui_draw_pager(int show_prev, int show_next);
+int  ui_pager_hit(int x, int y);
 
 /* The root screen's counterpart: an on-screen "Exit" button in the same corner
  * where every other screen shows Back, so the app can be closed by touch on

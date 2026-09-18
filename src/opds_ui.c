@@ -41,7 +41,7 @@ static void draw_center_message(const char *title, const char *msg)
 {
     int w = ScreenWidth();
     int cy = ui_header_height();
-    int ch = ScreenHeight() - ui_header_height() - ui_footer_height();
+    int ch = ui_screen_height() - ui_header_height() - ui_footer_height();
     const ui_fonts *f = ui_get_fonts();
 
     ClearScreen();
@@ -285,7 +285,7 @@ static void draw_scroll_hint(int y)
     FillArea(0, y, w, NAV_HINT_H, WHITE);
     SetFont(f->sub, DGRAY);
     DrawTextRect(SB_PAD, y, w - 2 * SB_PAD, NAV_HINT_H,
-                 "Up/Down keys scroll \xC2\xB7 Prev/Next page",
+                 "Page buttons below \xC2\xB7 keys scroll if the reader has them",
                  ALIGN_CENTER | VALIGN_MIDDLE);
     DrawLine(SB_PAD, y + NAV_HINT_H - 1, w - SB_PAD, y + NAV_HINT_H - 1, LGRAY);
 }
@@ -324,6 +324,8 @@ static void browse_show(screen_t *self)
     ui_draw_footer(menu_searches
                    ? "OK open \xC2\xB7 tap bar filters \xC2\xB7 Menu searches \xC2\xB7 Back"
                    : "OK open \xC2\xB7 tap bar / Menu filter list \xC2\xB7 Back");
+    ui_draw_pager(b->list.top > 0,
+                  b->list.top + b->list.per_page < b->list.count);
     ui_flush_full();
 }
 
@@ -555,6 +557,12 @@ static int browse_pointer(screen_t *self, int x, int y)
         return 1;
     }
 
+    int dir = ui_pager_hit(x, y);
+    if (dir) {
+        if (ui_list_page(&b->list, dir)) browse_show(self);
+        return 1;
+    }
+
     int idx = ui_list_hit(&b->list, x, y);
     if (idx < 0) return 0;
     if (idx != b->list.selected) {
@@ -637,7 +645,7 @@ static void book_show(screen_t *self)
         /* Stop the summary above the Download button (when shown) so the two
          * never overlap; otherwise run down to just above the footer. */
         int bottom = bk->dl_url ? ui_action_button_top()
-                                : ScreenHeight() - ui_footer_height();
+                                : ui_screen_height() - ui_footer_height();
         int sh = bottom - yy - 12;
         if (sh > 0)
             DrawTextRect(x, yy, cw, sh, bk->summary, ALIGN_LEFT | VALIGN_TOP);
@@ -659,7 +667,7 @@ static int book_progress_cb(int pct, void *ud)
     prog_ctx *ctx = ud;
     int w = ScreenWidth();
     int cy = ui_header_height();
-    int ch = ScreenHeight() - ui_header_height() - ui_footer_height();
+    int ch = ui_screen_height() - ui_header_height() - ui_footer_height();
     const ui_fonts *f = ui_get_fonts();
 
     ClearScreen();
@@ -680,7 +688,7 @@ static int book_progress_cb(int pct, void *ud)
     if (fill > 0) FillArea(bx, by, fill, bh, BLACK);
 
     ui_draw_footer("Please wait...");
-    PartialUpdate(0, 0, w, ScreenHeight());
+    PartialUpdate(0, 0, w, ui_screen_height());
     return 0;
 }
 
@@ -846,6 +854,8 @@ static void catalog_show(screen_t *self)
     ui_draw_header(self->title);
     ui_list_draw(&st->list);
     ui_draw_footer("OK or tap to open  Back");
+    ui_draw_pager(st->list.top > 0,
+                  st->list.top + st->list.per_page < st->list.count);
     ui_flush_full();
 }
 
@@ -883,6 +893,12 @@ static int catalog_pointer(screen_t *self, int x, int y)
         return 1;
     }
     catalog_state *st = self->data;
+    int dir = ui_pager_hit(x, y);
+    if (dir) {
+        if (ui_list_page(&st->list, dir)) catalog_show(self);
+        return 1;
+    }
+
     int idx = ui_list_hit(&st->list, x, y);
     if (idx < 0) return 0;
     if (idx != st->list.selected) {

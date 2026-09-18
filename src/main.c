@@ -22,6 +22,11 @@ static int inkshelf_handler(int type, int par1, int par2)
 {
     switch (type) {
     case EVT_INIT:
+        /* Own the whole screen. With the firmware panel on, the app's
+         * framebuffer is offset by its height and anything drawn past the
+         * bottom wraps to the top — an InkPad One on 6.11 showed the book
+         * page split in two, 136 px out of place. */
+        SetPanelType(PANEL_DISABLED);
         ui_fonts_open();
         /* Bring WiFi up at launch. The firmware still powers the radio down on
          * its idle timer, so this is only the initial connect — each network
