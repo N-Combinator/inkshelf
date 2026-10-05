@@ -2,7 +2,8 @@
  * opds_ui.c — the OPDS browser screens.
  *
  * Three screens, all built on the nav stack + list widget:
- *   - catalog picker: presets or a custom URL (on-screen keyboard)
+ *   - catalog picker: presets, saved catalogs, or a custom URL (on-screen
+ *     keyboard); a custom URL that opens is saved for next time
  *   - browse: fetch+parse a feed, list entries, drill into subfeeds,
  *     follow "next" paging, run an OpenSearch query, open a book
  *   - book detail: metadata + format; download lands in milestone #5
@@ -21,6 +22,7 @@
 #include "inkview.h"
 
 #include "app.h"
+#include "catalogs.h"
 #include "download.h"
 #include "http.h"
 #include "opds.h"
@@ -66,6 +68,7 @@ typedef struct {
     int ok;
     int loaded;
     int is_root;            /* this is a catalog's entry feed (root), not a drill-down */
+    int remember;           /* typed by hand: save it once it has opened (see browse_load) */
     char filter[FILTER_CAP];   /* local title/author filter ("" = show all) */
     char err[HTTP_ERR_LEN];
 } browse_state;
@@ -76,6 +79,10 @@ typedef struct {
 static char g_root_search_href[URLCAP];
 static char g_root_search_base[URLCAP];
 static int  g_root_search_valid;
+
+/* Keyboard buffer for "Custom URL...". Kept after a failed open so a typo can
+ * be fixed instead of retyping the whole address; cleared once it is saved. */
+static char g_custom_url[URLCAP];
 
 static void browse_clear_items(browse_state *b)
 {
@@ -220,6 +227,14 @@ static void browse_load(browse_state *b, const char *url)
     free(buf);
     browse_build_items(b);
     b->ok = 1;
+
+    /* Only an address that really served a catalog is worth keeping: saving on
+     * entry would fill the picker with typos. */
+    if (b->remember) {
+        b->remember = 0;
+        catalogs_add(b->url, b->feed->title);
+        g_custom_url[0] = '\0';
+    }
 
     /* A catalog's entry feed defines the "whole library" search scope. Capture
      * its search link (if any) so the main screen can search globally and so
@@ -796,8 +811,10 @@ static screen_t *make_book_detail(const opds_entry *e, const char *base_url)
 
 /* ---- catalog picker (root of the OPDS flow) ------------------------ */
 
-/* Presets must line up index-for-index with the first CATALOG_PRESETS entries
- * of CATALOG_ITEMS; "Custom URL..." stays last (see catalog_open). */
+/* Rows, top to bottom: the presets, the user's saved catalogs, "Custom URL...",
+ * and — only when something is saved — "Remove a saved catalog...". Picking the
+ * last one switches the same screen into remove mode, which lists just the
+ * saved catalogs and forgets the one that is picked. */
 static const char *PRESET_URLS[] = {
     "https://www.gutenberg.org/ebooks.opds/",
     /* Flibusta's OPDS lives on flibusta.is (the .su host has no /opds and 404s).
@@ -808,55 +825,153 @@ static const char *PRESET_URLS[] = {
      * a patron account), so it can't be a public preset. Gutenberg covers the
      * same English public-domain ground. */
 };
-static const ui_list_item CATALOG_ITEMS[] = {
+static const ui_list_item PRESET_ITEMS[] = {
     { "Project Gutenberg", "gutenberg.org - 70k+ free books" },
     { "Flibusta",          "flibusta.is - large Russian-language library" },
-    { "Custom URL...",     "Enter an OPDS catalog address" },
 };
-#define CATALOG_COUNT ((int)(sizeof(CATALOG_ITEMS) / sizeof(CATALOG_ITEMS[0])))
 #define CATALOG_PRESETS ((int)(sizeof(PRESET_URLS) / sizeof(PRESET_URLS[0])))
 
-typedef struct { ui_list list; } catalog_state;
+typedef struct {
+    ui_list list;
+    ui_list_item items[CATALOG_PRESETS + CATALOGS_MAX + 2];
+    int removing;           /* remove mode: the list holds only saved catalogs */
+} catalog_state;
 static catalog_state g_catalog;
-static char g_custom_url[URLCAP];
+
+/* The address without its scheme, so more of it fits on a row. */
+static const char *url_display(const char *url)
+{
+    if (strncmp(url, "https://", 8) == 0) return url + 8;
+    if (strncmp(url, "http://", 7) == 0) return url + 7;
+    return url;
+}
+
+static void catalog_add_saved_rows(catalog_state *st, int *n)
+{
+    for (int i = 0; i < catalogs_count(); i++) {
+        const saved_catalog *c = catalogs_get(i);
+        if (c->title[0]) {
+            st->items[*n].primary = c->title;
+            st->items[*n].secondary = url_display(c->url);
+        } else {
+            st->items[*n].primary = url_display(c->url);
+            st->items[*n].secondary = "Saved catalog";
+        }
+        (*n)++;
+    }
+}
+
+/* Rebuild the rows from the saved list, keeping the selection where it was. */
+static void catalog_build(catalog_state *st)
+{
+    int prev = st->list.items ? st->list.selected : 0;
+    int n = 0;
+
+    if (st->removing && catalogs_count() == 0) st->removing = 0;
+
+    if (st->removing) {
+        catalog_add_saved_rows(st, &n);
+    } else {
+        for (int i = 0; i < CATALOG_PRESETS; i++) st->items[n++] = PRESET_ITEMS[i];
+        catalog_add_saved_rows(st, &n);
+        st->items[n].primary = "Custom URL...";
+        st->items[n].secondary = "Enter an OPDS catalog address";
+        n++;
+        if (catalogs_count() > 0) {
+            st->items[n].primary = "Remove a saved catalog...";
+            st->items[n].secondary = NULL;
+            n++;
+        }
+    }
+
+    ui_list_init(&st->list, st->items, n);
+    if (prev >= n) prev = n - 1;
+    /* ui_list_move also scrolls the row into view */
+    if (prev > 0) ui_list_move(&st->list, prev);
+}
+
+static void catalog_show(screen_t *self);
+
+static void catalog_set_removing(screen_t *self, int on)
+{
+    catalog_state *st = self->data;
+    st->removing = on;
+    st->list.items = NULL;              /* different rows: start at the top */
+    catalog_build(st);
+    catalog_show(self);
+}
 
 static void custom_kbd_cb(char *text)
 {
-    if (!text || !text[0]) return;
+    if (!text) return;
+    /* A stray space from the on-screen keyboard is not part of the address. */
+    while (*text == ' ') text++;
+    size_t n = strlen(text);
+    while (n > 0 && text[n - 1] == ' ') text[--n] = '\0';
+    if (!text[0]) return;
+
     screen_t *c = make_browse(text, 1);   /* user's chosen entry feed = root */
-    if (c) nav_push(c);
+    if (!c) return;
+    ((browse_state *)c->data)->remember = 1;
+    nav_push(c);
 }
 
-static void catalog_open(int idx)
+static void catalog_open(screen_t *self, int idx)
 {
+    catalog_state *st = self->data;
+    int saved = catalogs_count();
+
+    if (st->removing) {
+        catalogs_remove(idx);
+        catalog_set_removing(self, 0);
+        return;
+    }
+
+    const char *url = NULL;
     if (idx >= 0 && idx < CATALOG_PRESETS) {
-        screen_t *c = make_browse(PRESET_URLS[idx], 1);   /* preset entry = root */
-        if (c) nav_push(c);
-    } else if (idx == CATALOG_COUNT - 1) {
-        g_custom_url[0] = '\0';
+        url = PRESET_URLS[idx];
+    } else if (idx < CATALOG_PRESETS + saved) {
+        url = catalogs_get(idx - CATALOG_PRESETS)->url;
+    } else if (idx == CATALOG_PRESETS + saved) {
         OpenKeyboard("OPDS catalog URL", g_custom_url,
                      (int)sizeof(g_custom_url) - 1, 0, custom_kbd_cb);
+        return;
+    } else if (idx == CATALOG_PRESETS + saved + 1 && saved > 0) {
+        catalog_set_removing(self, 1);
+        return;
+    }
+    if (url) {
+        screen_t *c = make_browse(url, 1);   /* a catalog's entry feed = root */
+        if (c) nav_push(c);
     }
 }
 
 static void catalog_enter(screen_t *self)
 {
-    catalog_state *st = self->data;
-    int prev = st->list.items ? st->list.selected : 0;
-    ui_list_init(&st->list, CATALOG_ITEMS, CATALOG_COUNT);
-    if (prev < CATALOG_COUNT) st->list.selected = prev;
+    catalog_build(self->data);
 }
 
 static void catalog_show(screen_t *self)
 {
     catalog_state *st = self->data;
     ClearScreen();
-    ui_draw_header(self->title);
+    ui_draw_header(st->removing ? "Remove saved catalog" : self->title);
     ui_list_draw(&st->list);
-    ui_draw_footer("OK or tap to open  Back");
+    ui_draw_footer(st->removing ? "OK or tap to remove  Back"
+                                : "OK or tap to open  Back");
     ui_draw_pager(st->list.top > 0,
                   st->list.top + st->list.per_page < st->list.count);
     ui_flush_full();
+}
+
+/* Back leaves remove mode first, and the picker only after that. */
+static void catalog_back(screen_t *self)
+{
+    catalog_state *st = self->data;
+    if (st->removing)
+        catalog_set_removing(self, 0);
+    else
+        nav_pop();
 }
 
 static int catalog_key(screen_t *self, int key)
@@ -876,10 +991,10 @@ static int catalog_key(screen_t *self, int key)
         if (ui_list_page(&st->list, +1)) catalog_show(self);
         return 1;
     case UI_NAV_SELECT:
-        catalog_open(st->list.selected);
+        catalog_open(self, st->list.selected);
         return 1;
     case UI_NAV_BACK:
-        nav_pop();
+        catalog_back(self);
         return 1;
     default:
         return 0;
@@ -889,7 +1004,7 @@ static int catalog_key(screen_t *self, int key)
 static int catalog_pointer(screen_t *self, int x, int y)
 {
     if (ui_back_button_hit(x, y)) {
-        nav_pop();
+        catalog_back(self);
         return 1;
     }
     catalog_state *st = self->data;
@@ -905,7 +1020,7 @@ static int catalog_pointer(screen_t *self, int x, int y)
         st->list.selected = idx;
         catalog_show(self);
     }
-    catalog_open(idx);
+    catalog_open(self, idx);
     return 1;
 }
 

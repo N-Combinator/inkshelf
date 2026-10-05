@@ -170,6 +170,14 @@ echo "== unit tests (httpd: multipart parser + filename safety) =="
 "${OUT}/test_httpd"
 
 echo
+echo "== unit tests (catalogs: saved OPDS catalog list) =="
+# shellcheck disable=SC2086
+"${CC}" ${WARN} ${SAN} -I"${ROOT}/src" \
+    "${ROOT}/src/catalogs.c" "${ROOT}/tests/test_catalogs.c" \
+    -o "${OUT}/test_catalogs"
+"${OUT}/test_catalogs"
+
+echo
 echo "== integration smoke (full app, stub InkView+curl) =="
 # All app sources except main.c's real InkView/curl come from the stubs.
 # download.c is excluded — host_stubs.c provides a stub download_book,
@@ -177,6 +185,7 @@ echo "== integration smoke (full app, stub InkView+curl) =="
 # shellcheck disable=SC2086
 "${CC}" ${WARN} ${SAN} -I"${ROOT}/src" -I"${INC}" \
     "${ROOT}/src/app.c" \
+    "${ROOT}/src/catalogs.c" \
     "${ROOT}/src/config.c" \
     "${ROOT}/src/http.c" \
     "${ROOT}/src/library.c" \

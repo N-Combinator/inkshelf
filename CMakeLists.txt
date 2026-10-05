@@ -12,6 +12,7 @@ add_executable(inkshelf.app
     src/main.c
     src/app.c
     src/config.c
+    src/catalogs.c
     src/ui.c
     src/screens.c
     src/xml.c
