@@ -14,15 +14,25 @@
  *      renders results (not a local filter over the visible categories);
  *   2. a search from inside a category still issues a scoped server search;
  *   3. a search for a missing term returns an empty result list, not an error.
+ *
+ * And the saved-catalog behaviour: a custom URL that opens is remembered and
+ * listed in the picker, one that fails is not (but stays in the keyboard for
+ * fixing), and a saved catalog can be removed again.
  */
+
+#define _POSIX_C_SOURCE 200809L   /* mkstemp */
 
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <unistd.h>
+
 #include "inkview.h"
 #include <curl/curl.h>
+
+#include "catalogs.h"
 
 /* A feed with a navigation entry, a book entry, a templated search link and
  * a next-page link — so build_items, paging, search and book detail all
@@ -147,12 +157,20 @@ int QueryNetwork(void) { return NET_CONNECTED; }
  *   - the category search uses a present term.
  */
 static int g_root_search_n;
+/* What the custom-URL keyboard will "type" next, and the text it was opened
+ * with (the app pre-fills it with the last address that failed to open). */
+static const char *g_custom_url_input = "";
+static char g_custom_url_prefill[512];
 void OpenKeyboard(const char *t, char *b, int m, int f, iv_kbdhandler h)
 {
     (void)f;
     const char *q = "tolkien";
     if (t && strcmp(t, "Search whole library") == 0)
         q = (g_root_search_n++ == 0) ? "tolkien" : "zzznomatch";
+    if (t && strcmp(t, "OPDS catalog URL") == 0) {
+        snprintf(g_custom_url_prefill, sizeof g_custom_url_prefill, "%s", b);
+        q = g_custom_url_input;
+    }
     strncpy(b, q, (size_t)m);
     b[m] = '\0';
     if (h) h(b);
@@ -174,6 +192,13 @@ void InkViewMain(int (*h)(int, int, int))
     /* y inside the search bar band ([header, header+SEARCHBAR_H]); same tap the
      * original smoke test used. */
     const int BARX = 120, BARY = 96;
+
+    /* Saved catalogs go to a scratch file, not the device path. */
+    char catalogs_path[] = "/tmp/inkshelf_smoke_catalogs_XXXXXX";
+    int cfd = mkstemp(catalogs_path);
+    if (cfd >= 0) close(cfd);
+    unlink(catalogs_path);
+    catalogs_set_path(catalogs_path);
 
     h(EVT_INIT, 0, 0);                  /* main menu */
     h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> OPDS catalog picker */
@@ -215,6 +240,79 @@ void InkViewMain(int (*h)(int, int, int))
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* pop empty results -> ROOT */
 
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* pop ROOT -> catalog picker */
+
+    /* --- Saved catalogs: a custom URL only has to be typed once ----------- */
+    printf("saved catalogs:\n");
+    CHECK(!screen_has("Remove a saved catalog..."),
+          "nothing saved: no remove row in the picker");
+
+    /* Picker rows: Gutenberg, Flibusta, Custom URL... */
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);    /* select "Custom URL..." */
+    g_custom_url_input = "http://unreachable.example/opds";
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* type it -> browse fails to load */
+    CHECK(screen_has("URL: http://unreachable.example/opds") && !screen_has("A Book"),
+          "an unreachable address shows the error screen");
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> picker */
+    CHECK(catalogs_count() == 0 && !screen_has("unreachable.example/opds"),
+          "an address that failed to open is not saved");
+
+    g_custom_url_input = " http://my.example/opds ";
+    int r4 = g_nreq;
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* "Custom URL..." again -> loads */
+    CHECK(strcmp(g_custom_url_prefill, "http://unreachable.example/opds") == 0,
+          "the keyboard reopens with the failed address, ready to be fixed");
+    CHECK(requested_since(r4, "http://my.example/opds") &&
+          !requested_since(r4, " http://my.example/opds"),
+          "custom URL is fetched, without the stray spaces");
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> picker */
+    CHECK(screen_has("Sample Catalog") && screen_has("my.example/opds"),
+          "the opened catalog is listed in the picker under its feed title");
+    CHECK(screen_has("Remove a saved catalog..."), "picker now offers removal");
+    catalogs_load();                    /* forget memory: prove it is on disk */
+    CHECK(catalogs_count() == 1 &&
+          strcmp(catalogs_get(0)->url, "http://my.example/opds") == 0,
+          "saved catalog persists on disk");
+
+    /* Picker rows: Gutenberg, Flibusta, [saved], Custom URL..., Remove... —
+     * the selection (row 2) now sits on the saved catalog. */
+    int r5 = g_nreq;
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* open the saved catalog: no typing */
+    CHECK(requested_since(r5, "http://my.example/opds"),
+          "picking the saved catalog opens it");
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> picker */
+
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);    /* "Custom URL..." */
+    g_custom_url_input = "";            /* keyboard cancelled / left empty */
+    int r6 = g_nreq;
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);
+    CHECK(g_custom_url_prefill[0] == '\0',
+          "after a successful open the keyboard starts empty again");
+    CHECK(g_nreq == r6, "an empty address fetches nothing");
+
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);    /* "Remove a saved catalog..." */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> remove mode */
+    CHECK(screen_has("Remove saved catalog") && screen_has("Sample Catalog") &&
+          !screen_has("Project Gutenberg"),
+          "remove mode lists only the saved catalogs");
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* Back leaves remove mode, not the picker */
+    CHECK(screen_has("Project Gutenberg") && catalogs_count() == 1,
+          "Back from remove mode returns to the picker, nothing removed");
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);    /* "Remove a saved catalog..." */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> remove mode */
+    int r7 = g_nreq;
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* remove the saved catalog */
+    CHECK(g_nreq == r7, "removing does not open the catalog");
+    CHECK(screen_has("Project Gutenberg") && !screen_has("Sample Catalog") &&
+          !screen_has("Remove a saved catalog..."),
+          "removed catalog is gone and the picker is back to its plain form");
+    catalogs_load();
+    CHECK(catalogs_count() == 0, "removal persists on disk");
+    unlink(catalogs_path);
+
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* pop catalog picker -> main menu */
 
     /* Exercise the WiFi Drop screen: enter, refresh (any key), then back. */
@@ -332,6 +430,8 @@ CURLcode curl_easy_perform(CURL *c)
      * fetch gets the sample catalog. */
     const char *feed = SAMPLE_FEED;
     size_t n = sizeof(SAMPLE_FEED) - 1;
+    if (strstr(g_last_url, "unreachable"))
+        return CURLE_COULDNT_CONNECT;
     if (strstr(g_last_url, "zzznomatch")) {
         feed = EMPTY_FEED;
         n = sizeof(EMPTY_FEED) - 1;

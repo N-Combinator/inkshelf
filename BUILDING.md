@@ -175,6 +175,7 @@ src/
   library.{c,h}     library paths + PocketBook library rescan
   httpd.{c,h}       WiFi-drop embedded HTTP upload server
   config.{c,h}      flat key=value config (PIN storage, inkshelf.conf)
+  catalogs.{c,h}    saved custom OPDS catalogs (inkshelf-catalogs.txt)
 cmake/                    arm-obreey cross-compile toolchain file
 tests/                    host test gate (no SDK / no network)
 build.sh                  Docker / direct build wrapper (CI-friendly)

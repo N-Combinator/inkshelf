@@ -96,7 +96,8 @@ open an issue naming the model and firmware version.
   download books straight into the native PocketBook library. Ships with
   presets for [Project Gutenberg](https://www.gutenberg.org) and
   [Flibusta](https://flibusta.is/opds) (Russian-language), plus a custom-URL
-  entry via the on-screen keyboard. Every list has a tap-to-filter bar (by
+  entry via the on-screen keyboard; a custom catalog is saved once it has
+  opened, so its address is typed only once. Every list has a tap-to-filter bar (by
   title/author); long catalogs page with the hardware page-turn keys.
 - **WiFi book drop** — starts a tiny HTTP server on the reader; from a PC or
   phone on the same WiFi you open the shown URL and upload `epub`/`fb2` files
@@ -113,7 +114,12 @@ hardware up/down keys and OK, or tap it.
 ### OPDS catalog
 
 Pick a preset (Project Gutenberg, Flibusta) or **Custom URL...** and type a feed
-address. Browse the catalog, tap the filter bar to narrow a list, or press
+address. A custom catalog that opens is saved automatically and listed in the
+picker under its feed title from then on (up to 16); **Remove a saved
+catalog...** forgets one. If the address fails to open, the keyboard comes back
+with it filled in so a typo can be fixed. The list is a plain text file,
+`/mnt/ext1/system/config/inkshelf-catalogs.txt` (one `URL<TAB>title` per line),
+so long addresses can also be pasted in over USB. Browse the catalog, tap the filter bar to narrow a list, or press
 **Menu** to search. Open a book and confirm to download it straight into the
 native PocketBook library.
 
