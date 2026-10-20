@@ -14,6 +14,7 @@
 #include "inkview.h"
 
 #include "app.h"
+#include "library_scan.h"
 #include "net.h"
 #include "screens.h"
 #include "ui.h"
@@ -63,8 +64,8 @@ static int inkshelf_handler(int type, int par1, int par2)
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
+    int scan_status = library_scan_handle_args(argc, argv);
+    if (scan_status >= 0) return scan_status;
 
     InkViewMain(inkshelf_handler);
     return 0;

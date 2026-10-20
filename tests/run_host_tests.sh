@@ -164,7 +164,7 @@ echo "== unit tests (httpd: multipart parser + filename safety) =="
 # so the unit test never opens a socket. -pthread satisfies the link.
 # shellcheck disable=SC2086
 "${CC}" ${WARN} ${SAN} -pthread -I"${ROOT}/src" \
-    "${ROOT}/src/httpd.c" "${ROOT}/src/library.c" "${ROOT}/src/config.c" \
+    "${ROOT}/src/httpd.c" "${ROOT}/src/library.c" "${ROOT}/src/library_scan.c" "${ROOT}/src/config.c" \
     "${ROOT}/tests/test_httpd.c" \
     -o "${OUT}/test_httpd"
 "${OUT}/test_httpd"
@@ -178,6 +178,15 @@ echo "== unit tests (catalogs: saved OPDS catalog list) =="
 "${OUT}/test_catalogs"
 
 echo
+echo "== unit tests (firmware library scanner supervisor) =="
+# Run an actual child process with a fake scanner; no device or InkView needed.
+# shellcheck disable=SC2086
+"${CC}" ${WARN} ${SAN} -I"${ROOT}/src" \
+    "${ROOT}/src/library_scan.c" "${ROOT}/tests/test_library_scan.c" \
+    -o "${OUT}/test_library_scan"
+"${OUT}/test_library_scan"
+
+echo
 echo "== integration smoke (full app, stub InkView+curl) =="
 # All app sources except main.c's real InkView/curl come from the stubs.
 # download.c is excluded — host_stubs.c provides a stub download_book,
@@ -189,6 +198,7 @@ echo "== integration smoke (full app, stub InkView+curl) =="
     "${ROOT}/src/config.c" \
     "${ROOT}/src/http.c" \
     "${ROOT}/src/library.c" \
+    "${ROOT}/src/library_scan.c" \
     "${ROOT}/src/main.c" \
     "${ROOT}/src/net.c" \
     "${ROOT}/src/opds.c" \

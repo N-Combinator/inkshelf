@@ -169,6 +169,21 @@ same thing plus device discovery; see [BUILDING.md](BUILDING.md).)
 
 ## Troubleshooting
 
+### New books do not appear until a reboot
+
+After a successful OPDS download or WiFi upload, inkshelf requests a firmware
+library scan. Nearby uploads are grouped into one pass after a short delay.
+The scanner may briefly show its own progress screen and continues if inkshelf
+is closed. This addresses readers where `BookReady()` alone does not index a
+newly saved file. Library refresh after exiting inkshelf has been confirmed on
+a PocketBook 740 running firmware U740.6.8.4473. The scan relies on the firmware's
+`scanner.app` and its `Scan finished` output; other models and firmware versions
+still need verification.
+
+If the book remains missing, check `inkshelf-library-scan.log` in the root of
+the reader's internal storage. It records scanner output, launch failures and
+timeouts. Failed indexing does not delete or invalidate the saved book.
+
 ### WiFi drops while the app is open
 
 PocketBook firmware powers the WiFi radio down on an idle timer to save battery,

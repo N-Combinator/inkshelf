@@ -18,6 +18,7 @@
 #include "inkview.h"
 #include "download.h"
 #include "library.h"
+#include "library_scan.h"
 #include "net.h"
 
 #define HTTP_UA "inkshelf/0.1 (PocketBook)"
@@ -160,6 +161,7 @@ int download_book(const char *url,
      * Only once the file is final: there is no call to withdraw an announced
      * book, so a failed download must never have been announced. */
     BookReady(out_path);
+    library_scan_request();
     return 0;
 
 #undef FAIL
