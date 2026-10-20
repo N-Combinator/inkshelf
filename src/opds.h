@@ -89,6 +89,11 @@ char *opds_apply_search_template(const char *tmpl, const char *query);
 
 /* ---- URL resolution ------------------------------------------------ */
 
+/* Trim a catalog address and prepend http:// if no scheme is present.
+ * Keeps the path (including its trailing slash), query and explicit scheme.
+ * Returns a heap string (caller frees), or NULL for empty input / OOM. */
+char *opds_normalize_catalog_url(const char *url);
+
 /* Resolve `href` (absolute, root-relative or relative) against `base` into
  * `out` (size `outsz`). Returns 0 on success, -1 if it did not fit. */
 int opds_resolve_url(const char *base, const char *href, char *out, unsigned long outsz);

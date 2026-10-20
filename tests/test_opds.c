@@ -113,6 +113,55 @@ static void test_acq_feed(void)
     opds_feed_free(f);
 }
 
+static void test_catalog_url_normalization(void)
+{
+    printf("catalog URL normalization:\n");
+    const char *inputs[] = {
+        "192.168.88.30:8282/opds",
+        " \t192.168.88.30:8282/opds/\r\n",
+        "192.168.88.30:8282",
+        "calibre.local:8080/opds?library_id=calibre_library",
+        " http://192.168.88.30:8282/opds ",
+        "https://example.org/opds/",
+        "HTTP://192.168.88.30:8282/opds"
+    };
+    const char *expected[] = {
+        "http://192.168.88.30:8282/opds",
+        "http://192.168.88.30:8282/opds/",
+        "http://192.168.88.30:8282",
+        "http://calibre.local:8080/opds?library_id=calibre_library",
+        "http://192.168.88.30:8282/opds",
+        "https://example.org/opds/",
+        "HTTP://192.168.88.30:8282/opds"
+    };
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++) {
+        char *base = opds_normalize_catalog_url(inputs[i]);
+        CHECK(STREQ(base, expected[i]), inputs[i]);
+        free(base);
+    }
+    CHECK(opds_normalize_catalog_url(NULL) == NULL, "NULL address rejected");
+    CHECK(opds_normalize_catalog_url("") == NULL, "empty address rejected");
+    CHECK(opds_normalize_catalog_url(" \t\r\n") == NULL, "blank address rejected");
+
+    /* Device log regression: curl loaded a bare IP, then the next GET lost
+     * the entire server address. Test both forms used on the reader. */
+    const char *bases[] = {"192.168.88.30:8282/opds", "192.168.88.30:8282/opds/"};
+    const char *hrefs[] = {
+        "/opds?library_id=calibre_library",
+        "/opds/navcatalog/4e74616773?library_id=calibre_library"
+    };
+    for (size_t i = 0; i < sizeof(bases) / sizeof(bases[0]); i++) {
+        char *base = opds_normalize_catalog_url(bases[i]);
+        for (size_t j = 0; j < sizeof(hrefs) / sizeof(hrefs[0]); j++) {
+            char out[512], want[512];
+            snprintf(want, sizeof(want), "http://192.168.88.30:8282%s", hrefs[j]);
+            CHECK(opds_resolve_url(base, hrefs[j], out, sizeof(out)) == 0 &&
+                  STREQ(out, want), "Calibre navigation keeps scheme, IP and port");
+        }
+        free(base);
+    }
+}
+
 static void test_url_resolution(void)
 {
     printf("url resolution:\n");
@@ -212,6 +261,7 @@ int main(void)
 {
     test_nav_feed();
     test_acq_feed();
+    test_catalog_url_normalization();
     test_url_resolution();
     test_feed_links_and_search();
     test_xml_edge_cases();
