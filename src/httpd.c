@@ -33,6 +33,7 @@
 
 #include "httpd.h"
 #include "library.h"
+#include "library_scan.h"
 
 #define HTTPD_RDBUF       65536
 #define HTTPD_WRBUF       (1024 * 1024)   /* stdio write buffer for uploads */
@@ -854,6 +855,9 @@ static void handle_conn(int cfd)
         char full[HTTPD_PATH_MAX];
         snprintf(full, sizeof full, "%s/%s", dir, name);
         httpd_queue_received(full);
+        /* Independent of screen refreshes and InkView. The supervisor also
+         * survives closing this app immediately after a successful upload. */
+        library_scan_request();
         char msg[400];
         snprintf(msg, sizeof msg, "Saved %s (%llu bytes) to your library.\n",
                  name, bytes);

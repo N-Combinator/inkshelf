@@ -12,9 +12,10 @@
  * status is refreshed on every key event other than Back — the page-turn
  * buttons become a natural "refresh" gesture.
  *
- * Received books are announced to the firmware (BookReady) on every refresh
- * and when the screen is left, so they show up in the library without a
- * rescan or reboot. That happens here, on the UI thread, never in the server.
+ * BookPreparing/BookReady notifications are delivered on refresh and exit, on
+ * the UI thread; on 6.11 and newer that alone lists the book. On older firmware
+ * httpd.c also requests a library scan as soon as an upload is saved, which
+ * does not depend on touching this screen (see library_scan.h).
  */
 
 #include <ctype.h>
