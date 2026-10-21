@@ -141,6 +141,7 @@ void BookPreparing(const char *path)
     (void)path;
     strncat(g_book_calls, "P", sizeof g_book_calls - strlen(g_book_calls) - 1);
 }
+char *GetSoftwareVersion(void) { static char v[] = "U743G.6.11.1023"; return v; }
 void SetPanelType(int type) { (void)type; }
 int PanelHeight(void) { return 0; }
 void CloseApp(void) { g_closeapp_calls++; }
