@@ -17,6 +17,7 @@
 
 #include "inkview.h"
 #include "download.h"
+#include "http.h"
 #include "library.h"
 #include "library_scan.h"
 #include "net.h"
@@ -115,6 +116,7 @@ int download_book(const char *url,
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curlerr);
+    http_apply_tls(curl);
 
     /* WiFi may have idled out while the reader browsed; bring the radio up and
      * wait until it is actually connected before the transfer, otherwise it

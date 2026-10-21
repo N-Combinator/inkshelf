@@ -127,8 +127,11 @@ static void set_err(char *err, size_t errsz, const char *msg)
  * valid the bundle was. Rather than ship and maintain an NSS cert DB, we turn
  * off peer/host verification: inkshelf only fetches public OPDS feeds and
  * public-domain books and never sends credentials or writes anything, so the
- * MITM exposure is acceptable in exchange for catalogs that actually load. */
-static void http_apply_tls(CURL *curl)
+ * MITM exposure is acceptable in exchange for catalogs that actually load.
+ * Every handle that may fetch https:// must come through here: download.c
+ * builds its own handle for books and once skipped it, so catalogs loaded but
+ * book downloads failed with NSS's "issuer ... not trusted" on firmware 6.8. */
+void http_apply_tls(CURL *curl)
 {
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
