@@ -188,6 +188,20 @@ echo "== unit tests (firmware library scanner supervisor) =="
 "${OUT}/test_library_scan"
 
 echo
+echo "== unit tests (download: book transfer against stub curl) =="
+# The real download.c + http.c with the curl/InkView stubs in test_download.c,
+# so the handle that fetches the book is checked, not just the catalog one.
+# download.c builds its paths with bounded snprintf calls that gcc flags as
+# possible truncation; the device build does not use -Werror for them either.
+# shellcheck disable=SC2086
+"${CC}" ${WARN} -Wno-format-truncation ${SAN} -I"${ROOT}/src" -I"${INC}" \
+    "${ROOT}/src/download.c" "${ROOT}/src/http.c" "${ROOT}/src/library.c" \
+    "${ROOT}/src/library_scan.c" "${ROOT}/src/config.c" "${ROOT}/src/net.c" \
+    "${ROOT}/tests/test_download.c" \
+    -o "${OUT}/test_download"
+"${OUT}/test_download"
+
+echo
 echo "== integration smoke (full app, stub InkView+curl) =="
 # All app sources except main.c's real InkView/curl come from the stubs.
 # download.c is excluded — host_stubs.c provides a stub download_book,
