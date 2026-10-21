@@ -14,6 +14,7 @@
 #include "inkview.h"
 
 #include "app.h"
+#include "library_scan.h"
 #include "net.h"
 #include "screens.h"
 #include "ui.h"
@@ -27,6 +28,9 @@ static int inkshelf_handler(int type, int par1, int par2)
          * bottom wraps to the top — an InkPad One on 6.11 showed the book
          * page split in two, 136 px out of place. */
         SetPanelType(PANEL_DISABLED);
+        /* Firmware 6.8 lists new books only after a scanner pass; 6.11 does it
+         * on BookReady, and a scan there would just flash its progress screen. */
+        library_scan_configure(GetSoftwareVersion());
         ui_fonts_open();
         /* Bring WiFi up at launch. The firmware still powers the radio down on
          * its idle timer, so this is only the initial connect — each network
@@ -63,8 +67,8 @@ static int inkshelf_handler(int type, int par1, int par2)
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
+    int scan_status = library_scan_handle_args(argc, argv);
+    if (scan_status >= 0) return scan_status;
 
     InkViewMain(inkshelf_handler);
     return 0;
