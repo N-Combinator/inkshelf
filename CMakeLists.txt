@@ -21,6 +21,7 @@ add_executable(inkshelf.app
     src/http.c
     src/net.c
     src/library.c
+    src/library_scan.c
     src/download.c
     src/httpd.c
     src/wifi_drop_ui.c

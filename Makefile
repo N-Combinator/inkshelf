@@ -41,7 +41,7 @@ build:
 	./build.sh
 
 test:
-	tests/run_host_tests.sh
+	bash tests/run_host_tests.sh
 
 # --- make deploy DEVICE=<ip> [PORT=22] [SSH_USER=root] ----------------------
 # scp over SSH to a PBJB reader. A running inkshelf.app holds its ELF open, so
