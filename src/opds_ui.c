@@ -607,7 +607,9 @@ static screen_t *make_browse(const char *url, int is_root)
     browse_state *b = calloc(1, sizeof(*b));
     if (!s || !b) { free(s); free(b); return NULL; }
 
-    b->url = strdup(url);
+    /* Normalize both custom and saved addresses before fetching: curl can
+     * accept a bare host, but relative OPDS links need a base with a scheme. */
+    b->url = opds_normalize_catalog_url(url);
     if (!b->url) { free(s); free(b); return NULL; }
     b->is_root = is_root;
 

@@ -419,6 +419,23 @@ char *opds_apply_search_template(const char *tmpl, const char *query)
     return out;
 }
 
+char *opds_normalize_catalog_url(const char *url)
+{
+    char *clean = trim_dup(url);
+    if (!clean) return NULL;
+    if (!clean[0]) { free(clean); return NULL; }
+    if (strstr(clean, "://")) return clean;
+
+    size_t n = strlen(clean);
+    char *out = malloc(sizeof("http://") + n);
+    if (out) {
+        memcpy(out, "http://", sizeof("http://") - 1);
+        memcpy(out + sizeof("http://") - 1, clean, n + 1);
+    }
+    free(clean);
+    return out;
+}
+
 int opds_resolve_url(const char *base, const char *href, char *out, unsigned long outsz)
 {
     if (!href || !out || outsz == 0) return -1;

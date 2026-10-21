@@ -257,14 +257,19 @@ void InkViewMain(int (*h)(int, int, int))
     CHECK(catalogs_count() == 0 && !screen_has("unreachable.example/opds"),
           "an address that failed to open is not saved");
 
-    g_custom_url_input = " http://my.example/opds ";
+    g_custom_url_input = " my.example/opds ";
     int r4 = g_nreq;
     h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* "Custom URL..." again -> loads */
     CHECK(strcmp(g_custom_url_prefill, "http://unreachable.example/opds") == 0,
           "the keyboard reopens with the failed address, ready to be fixed");
     CHECK(requested_since(r4, "http://my.example/opds") &&
           !requested_since(r4, " http://my.example/opds"),
-          "custom URL is fetched, without the stray spaces");
+          "custom URL gains http:// before fetching, without the stray spaces");
+    int nav_req = g_nreq;
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* drill into the relative Fiction link */
+    CHECK(requested_since(nav_req, "http://my.example/fiction.xml"),
+          "relative navigation from a bare address keeps the server");
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> custom catalog root */
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> picker */
     CHECK(screen_has("Sample Catalog") && screen_has("my.example/opds"),
           "the opened catalog is listed in the picker under its feed title");
@@ -274,12 +279,26 @@ void InkViewMain(int (*h)(int, int, int))
           strcmp(catalogs_get(0)->url, "http://my.example/opds") == 0,
           "saved catalog persists on disk");
 
+    /* Simulate a catalog saved by an older version without a scheme. */
+    FILE *legacy = fopen(catalogs_path, "w");
+    CHECK(legacy != NULL, "can write a legacy saved catalog");
+    if (legacy) {
+        fputs("my.example/opds\tSample Catalog\n", legacy);
+        fclose(legacy);
+    }
+    catalogs_load();
+
     /* Picker rows: Gutenberg, Flibusta, [saved], Custom URL..., Remove... —
      * the selection (row 2) now sits on the saved catalog. */
     int r5 = g_nreq;
     h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* open the saved catalog: no typing */
     CHECK(requested_since(r5, "http://my.example/opds"),
-          "picking the saved catalog opens it");
+          "picking a legacy saved catalog adds http:// before fetching");
+    nav_req = g_nreq;
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* relative Fiction link again */
+    CHECK(requested_since(nav_req, "http://my.example/fiction.xml"),
+          "relative navigation from a legacy saved address keeps the server");
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> saved catalog root */
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* -> picker */
 
     h(EVT_KEYPRESS, IV_KEY_DOWN, 0);    /* "Custom URL..." */
