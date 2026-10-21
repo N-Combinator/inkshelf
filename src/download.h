@@ -7,8 +7,8 @@
  * download never appears in the library.
  *
  * After a successful save the function tells the firmware about the new file
- * with InkView's BookReady(), so it shows up in the library straight away
- * instead of after a manual rescan or a reboot.
+ * with InkView's BookReady() and requests a background firmware library scan.
+ * The save still succeeds if scanning fails; see inkshelf-library-scan.log.
  */
 
 #ifndef INKSHELF_DOWNLOAD_H
