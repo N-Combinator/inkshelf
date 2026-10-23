@@ -669,7 +669,7 @@ static void book_show(screen_t *self)
     }
 
     if (bk->dl_url)
-        ui_draw_action_button("\xE2\xAC\x87 Download");
+        ui_draw_download_button();
 
     ui_draw_footer(bk->dl_url ? "Tap Download or press OK  \xE2\x80\xB9 Back"
                               : "No downloadable file  \xE2\x80\xB9 Back");

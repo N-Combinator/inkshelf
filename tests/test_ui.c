@@ -7,6 +7,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "ui.h"
 
@@ -26,6 +27,7 @@ int  ScreenHeight(void) { return g_sh; }
 ifont *OpenFont(const char *n, int s, int a) { (void)n; (void)s; (void)a; return (ifont *)1; }
 void CloseFont(ifont *f) { (void)f; }
 void SetFont(ifont *f, int c) { (void)f; (void)c; }
+int StringWidth(const char *s) { return (int)strlen(s) * 18; }
 void DrawTextRect(int x,int y,int w,int h,const char *s,int f) { (void)x;(void)y;(void)w;(void)h;(void)s;(void)f; }
 void DrawLine(int a,int b,int c,int d,int e) { (void)a;(void)b;(void)c;(void)d;(void)e; }
 void DrawRect(int a,int b,int c,int d,int e) { (void)a;(void)b;(void)c;(void)d;(void)e; }

@@ -66,6 +66,8 @@ int  ui_exit_button_hit(int x, int y);
  * so it stays prominent on high-resolution readers. Draw it
  * with ui_draw_action_button(), route taps through ui_action_button_hit(),
  * and keep body content above ui_action_button_top() so they never overlap. */
+/* Download icon is drawn with primitives, independent of firmware fonts. */
+void ui_draw_download_button(void);
 void ui_draw_action_button(const char *label);
 int  ui_action_button_hit(int x, int y);
 int  ui_action_button_top(void);
