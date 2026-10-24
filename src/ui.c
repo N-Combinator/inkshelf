@@ -204,7 +204,7 @@ int ui_action_button_top(void)
     return y - ACTION_MARGIN;
 }
 
-void ui_draw_action_button(const char *label)
+static void draw_action_button(const char *label, int download_icon)
 {
     int x, y, bw, bh;
     action_button_rect(&x, &y, &bw, &bh);
@@ -212,7 +212,38 @@ void ui_draw_action_button(const char *label)
      * should be the first thing the eye lands on, not another outlined box. */
     FillArea(x, y, bw, bh, BLACK);
     SetFont(g_fonts.title, WHITE);
-    DrawTextRect(x, y, bw, bh, label ? label : "", ALIGN_CENTER | VALIGN_MIDDLE);
+    if (!download_icon) {
+        DrawTextRect(x, y, bw, bh, label ? label : "", ALIGN_CENTER | VALIGN_MIDDLE);
+        return;
+    }
+
+    /* U+2B07 is absent from some firmware fonts (shown as a missing-glyph
+     * box). Draw the arrow and tray ourselves, then centre the icon + label
+     * together using the active font's actual text width. */
+    const int icon_w = 28, icon_h = 30, gap = 12;
+    int text_w = StringWidth(label);
+    int ix = x + (bw - icon_w - gap - text_w) / 2;
+    int iy = y + (bh - icon_h) / 2;
+    FillArea(ix + 12, iy, 4, 20, WHITE);
+    for (int i = 0; i < 3; ++i) {
+        DrawLine(ix + 4, iy + 11 + i, ix + 13, iy + 20 + i, WHITE);
+        DrawLine(ix + 13, iy + 20 + i, ix + 22, iy + 11 + i, WHITE);
+    }
+    FillArea(ix, iy + 24, 3, 6, WHITE);
+    FillArea(ix + icon_w - 3, iy + 24, 3, 6, WHITE);
+    FillArea(ix, iy + icon_h - 3, icon_w, 3, WHITE);
+    DrawTextRect(ix + icon_w + gap, y, text_w, bh, label,
+                 ALIGN_LEFT | VALIGN_MIDDLE);
+}
+
+void ui_draw_action_button(const char *label)
+{
+    draw_action_button(label, 0);
+}
+
+void ui_draw_download_button(void)
+{
+    draw_action_button("Download", 1);
 }
 
 int ui_action_button_hit(int x, int y)

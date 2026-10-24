@@ -112,6 +112,7 @@ void ClearScreen(void) { g_ndraw = 0; }   /* new screen -> forget old text */
 ifont *OpenFont(const char *n, int s, int a) { (void)n; (void)s; (void)a; return (ifont *)1; }
 void CloseFont(ifont *f) { (void)f; }
 void SetFont(ifont *f, int c) { (void)f; (void)c; }
+int StringWidth(const char *s) { return (int)strlen(s) * 18; }
 void DrawTextRect(int x, int y, int w, int h, const char *s, int f)
 {
     (void)x; (void)y; (void)w; (void)h; (void)f;

@@ -66,6 +66,7 @@ void ClearScreen(void);
 ifont *OpenFont(const char *name, int size, int aa);
 void CloseFont(ifont *f);
 void SetFont(ifont *f, int color);
+int StringWidth(const char *s);
 void DrawTextRect(int x,int y,int w,int h,const char *s,int flags);
 void DrawString(int x,int y,const char *s);
 void DrawLine(int x1,int y1,int x2,int y2,int color);
