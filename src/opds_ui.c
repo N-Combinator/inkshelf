@@ -631,11 +631,18 @@ typedef struct {
     char *summary;
     char *dl_url;
     char *dl_type;
+    download_job *download;
+    int shown_pct;
+    int interrupted;
 } book_state;
+
+static void book_draw_progress(screen_t *self);
+static screen_t *g_downloading;
 
 static void book_show(screen_t *self)
 {
     book_state *bk = self->data;
+    if (bk->download) { book_draw_progress(self); return; }
     int w = ScreenWidth();
     int x = 24;
     int cw = w - 48;
@@ -674,21 +681,28 @@ static void book_show(screen_t *self)
     ui_draw_footer(bk->dl_url ? "Tap Download or press OK  \xE2\x80\xB9 Back"
                               : "No downloadable file  \xE2\x80\xB9 Back");
     ui_flush_full();
+    if (bk->interrupted) {
+        /* Show once, only when the app becomes visible again. InkView also
+         * reports task switches as hide/background, without a sleep reason. */
+        bk->interrupted = 0;
+        Message(ICON_WARNING, "inkshelf",
+                "Download stopped because the device was locked or the app "
+                "was hidden. Please try downloading the book again.", 6000);
+    }
 }
 
-/* Progress callback: repaints the progress bar on screen. */
-typedef struct { const char *title; } prog_ctx;
-
-static int book_progress_cb(int pct, void *ud)
+static void book_draw_progress(screen_t *self)
 {
-    prog_ctx *ctx = ud;
+    book_state *bk = self->data;
+    int pct = download_percent(bk->download);
+    bk->shown_pct = pct;
     int w = ScreenWidth();
     int cy = ui_header_height();
     int ch = ui_screen_height() - ui_header_height() - ui_footer_height();
     const ui_fonts *f = ui_get_fonts();
 
     ClearScreen();
-    ui_draw_header(ctx->title);
+    ui_draw_header(self->title);
 
     char msg[64];
     snprintf(msg, sizeof(msg), "Downloading... %d%%", pct);
@@ -704,42 +718,76 @@ static int book_progress_cb(int pct, void *ud)
     int fill = bw * pct / 100;
     if (fill > 0) FillArea(bx, by, fill, bh, BLACK);
 
-    ui_draw_footer("Please wait...");
+    ui_draw_footer("Back to cancel");
     PartialUpdate(0, 0, w, ui_screen_height());
-    return 0;
+}
+
+static void book_download_tick(void);
+
+static void book_stop_download(screen_t *self)
+{
+    book_state *bk = self->data;
+    ClearTimer(book_download_tick);
+    if (g_downloading == self) g_downloading = NULL;
+    download_destroy(bk->download);
+    bk->download = NULL;
+}
+
+static void book_suspend(screen_t *self)
+{
+    book_state *bk = self->data;
+    if (!bk->download) return;
+    book_stop_download(self);
+    bk->interrupted = 1;
+}
+
+static void book_download_tick(void)
+{
+    screen_t *self = g_downloading;
+    if (!self) return;
+    book_state *bk = self->data;
+    char out_path[DL_PATH_MAX], errbuf[DL_ERR_MAX];
+    int rc = download_step(bk->download, out_path, errbuf);
+    if (rc == 1) {
+        if (download_percent(bk->download) != bk->shown_pct)
+            book_draw_progress(self);
+        SetHardTimer("book download", book_download_tick, 100);
+        return;
+    }
+    book_stop_download(self);
+    book_show(self);
+    if (rc != 0) {
+        char msg[DL_ERR_MAX + 32];
+        snprintf(msg, sizeof msg, "Download failed:\n%s", errbuf);
+        Message(ICON_WARNING, "inkshelf", msg, 4000);
+    } else {
+        char msg[DL_PATH_MAX + 64];
+        snprintf(msg, sizeof msg, "Saved to your library:\n%s", out_path);
+        Message(ICON_INFORMATION, "inkshelf", msg, 5000);
+    }
 }
 
 static void book_do_download(screen_t *self)
 {
     book_state *bk = self->data;
+    if (bk->download) return; /* ignore repeated Download taps / OK */
     if (!bk->dl_url) {
         Message(ICON_INFORMATION, "inkshelf",
                 "No downloadable file for this entry.", 2500);
         return;
     }
 
-    prog_ctx ctx = { .title = bk->title };
-    char out_path[DL_PATH_MAX];
     char errbuf[DL_ERR_MAX];
-
-    int rc = download_book(bk->dl_url,
-                           bk->title,
-                           bk->dl_type,
-                           book_progress_cb, &ctx,
-                           out_path, errbuf);
-
-    if (rc != 0) {
+    bk->download = download_start(bk->dl_url, bk->title, bk->dl_type, errbuf);
+    if (!bk->download) {
         char msg[DL_ERR_MAX + 32];
         snprintf(msg, sizeof(msg), "Download failed:\n%s", errbuf);
         Message(ICON_WARNING, "inkshelf", msg, 4000);
-    } else {
-        char msg[DL_PATH_MAX + 64];
-        snprintf(msg, sizeof(msg),
-                 "Saved to your library:\n%s",
-                 out_path);
-        Message(ICON_INFORMATION, "inkshelf", msg, 5000);
+        return;
     }
-    book_show(self);   /* restore the detail screen */
+    g_downloading = self;
+    book_draw_progress(self);
+    SetHardTimer("book download", book_download_tick, 100);
 }
 
 static int book_key(screen_t *self, int key)
@@ -774,6 +822,7 @@ static void book_destroy(screen_t *self)
 {
     book_state *bk = self->data;
     if (bk) {
+        book_stop_download(self);
         free(bk->title);
         free(bk->author);
         free(bk->summary);
@@ -805,6 +854,7 @@ static screen_t *make_book_detail(const opds_entry *e, const char *base_url)
     s->title = bk->title;   /* valid for the screen's lifetime */
     s->data = bk;
     s->on_show = book_show;
+    s->on_suspend = book_suspend;
     s->on_key = book_key;
     s->on_pointer = book_pointer;
     s->on_destroy = book_destroy;

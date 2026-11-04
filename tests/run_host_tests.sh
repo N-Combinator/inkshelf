@@ -43,6 +43,9 @@ typedef void (*iv_kbdhandler)(char *);
 #define ICON_WARNING 3
 #define ICON_ERROR 4
 enum { EVT_INIT, EVT_SHOW, EVT_KEYPRESS, EVT_EXIT, EVT_POINTERUP, EVT_POINTERDOWN };
+#define EVT_HIDE 24
+#define EVT_FOREGROUND 151
+#define EVT_BACKGROUND 152
 /* Real InkView key codes (EVT_KEYPRESS par1), matching the device inkview.h.
  * Using the actual IV_KEY_* values — not a stand-in enum — is what lets the
  * host gate catch a key-code regression (e.g. switching back to evdev KEY_*). */
@@ -88,6 +91,8 @@ int PanelHeight(void);
 int NetConnect(const char *name);
 int QueryNetwork(void);
 void InkViewMain(int (*h)(int,int,int));
+void SetHardTimer(const char *name, void (*cb)(void), int ms);
+void ClearTimer(void (*cb)(void));
 #endif
 EOF
 
@@ -96,15 +101,31 @@ cat > "${INC}/curl/curl.h" <<'EOF'
 #define CURL_H
 #include <stddef.h>
 typedef void CURL;
+typedef void CURLM;
+typedef enum { CURLM_CALL_MULTI_PERFORM = -1, CURLM_OK = 0, CURLM_INTERNAL_ERROR = 4 } CURLMcode;
 typedef enum {
     CURLE_OK = 0,
     CURLE_COULDNT_RESOLVE_HOST = 6,
     CURLE_COULDNT_CONNECT = 7,
+    CURLE_WRITE_ERROR = 23,
     CURLE_OPERATION_TIMEDOUT = 28,
     CURLE_GOT_NOTHING = 52,
     CURLE_SEND_ERROR = 55,
     CURLE_RECV_ERROR = 56
 } CURLcode;
+#define CURLMSG_DONE 1
+typedef struct {
+    int msg;
+    CURL *easy_handle;
+    union { CURLcode result; } data;
+} CURLMsg;
+CURLM *curl_multi_init(void);
+CURLMcode curl_multi_add_handle(CURLM *, CURL *);
+CURLMcode curl_multi_remove_handle(CURLM *, CURL *);
+CURLMcode curl_multi_cleanup(CURLM *);
+CURLMcode curl_multi_perform(CURLM *, int *);
+CURLMsg *curl_multi_info_read(CURLM *, int *);
+const char *curl_multi_strerror(CURLMcode);
 #define CURL_ERROR_SIZE 256
 #define CURLOPT_URL 1
 #define CURLOPT_WRITEFUNCTION 2
@@ -192,10 +213,9 @@ echo
 echo "== unit tests (download: book transfer against stub curl) =="
 # The real download.c + http.c with the curl/InkView stubs in test_download.c,
 # so the handle that fetches the book is checked, not just the catalog one.
-# download.c builds its paths with bounded snprintf calls that gcc flags as
-# possible truncation; the device build does not use -Werror for them either.
 # shellcheck disable=SC2086
-"${CC}" ${WARN} -Wno-format-truncation ${SAN} -I"${ROOT}/src" -I"${INC}" \
+"${CC}" ${WARN} ${SAN} -Dclock_gettime=dl_test_clock_gettime -I"${ROOT}/src" -I"${INC}" \
+    -Dfwrite=dl_test_fwrite -Dfclose=dl_test_fclose -Drename=dl_test_rename \
     "${ROOT}/src/download.c" "${ROOT}/src/http.c" "${ROOT}/src/library.c" \
     "${ROOT}/src/library_scan.c" "${ROOT}/src/config.c" "${ROOT}/src/net.c" \
     "${ROOT}/tests/test_download.c" \
@@ -205,7 +225,7 @@ echo "== unit tests (download: book transfer against stub curl) =="
 echo
 echo "== integration smoke (full app, stub InkView+curl) =="
 # All app sources except main.c's real InkView/curl come from the stubs.
-# download.c is excluded — host_stubs.c provides a stub download_book,
+# download.c is excluded — host_stubs.c provides stub incremental downloads,
 # and http.c (which needs real curl) is replaced by the curl stubs in host_stubs.c.
 # shellcheck disable=SC2086
 "${CC}" ${WARN} ${SAN} -I"${ROOT}/src" -I"${INC}" \

@@ -146,7 +146,26 @@ char *GetSoftwareVersion(void) { static char v[] = "U743G.6.11.1023"; return v; 
 void SetPanelType(int type) { (void)type; }
 int PanelHeight(void) { return 0; }
 void CloseApp(void) { g_closeapp_calls++; }
-int Message(int i, const char *t, const char *x, int to) { (void)i; (void)t; (void)x; (void)to; return 0; }
+static int g_messages;
+static char g_message[600];
+int Message(int i, const char *t, const char *x, int to)
+{
+    (void)i; (void)t; (void)to;
+    g_messages++;
+    snprintf(g_message, sizeof g_message, "%s", x);
+    return 0;
+}
+static void (*g_timer)(void);
+void SetHardTimer(const char *name, void (*cb)(void), int ms)
+{ (void)name; (void)ms; g_timer = cb; }
+void ClearTimer(void (*cb)(void)) { if (g_timer == cb) g_timer = NULL; }
+static void timer_tick(void)
+{
+    void (*cb)(void) = g_timer;
+    g_timer = NULL;
+    if (cb) cb();
+}
+static int g_dl_starts, g_dl_active, g_dl_complete, g_dl_error;
 int NetConnect(const char *name) { (void)name; return 0; }
 /* Host: always report the link as connected so net_wait_online() takes its
  * fast path (no polling / nanosleep) and the tests stay instant. */
@@ -219,6 +238,65 @@ void InkViewMain(int (*h)(int, int, int))
     h(EVT_KEYPRESS, IV_KEY_DOWN, 0);    /* select the book in the results */
     h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> book detail */
     h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> trigger download (stubbed) */
+    CHECK(g_dl_active && g_timer && screen_has("Downloading..."),
+          "download returns to the event loop while still pending");
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);
+    CHECK(g_dl_starts == 1, "repeated OK does not start a duplicate transfer");
+    timer_tick();
+    CHECK(g_dl_active && g_timer, "timer advances a pending transfer without blocking input");
+    int messages = g_messages;
+    h(EVT_HIDE, 0, 0);
+    h(EVT_BACKGROUND, 0, 0);
+    CHECK(!g_dl_active && !g_timer && g_messages == messages,
+          "lock cancels immediately and defers the message until unlock");
+    h(EVT_SHOW, 0, 0);
+    CHECK(g_messages == messages + 1 && strstr(g_message, "locked") &&
+          strstr(g_message, "try downloading") && !screen_has("Downloading..."),
+          "unlock restores the detail screen and explains how to retry");
+    h(EVT_FOREGROUND, 0, 0);
+    CHECK(g_messages == messages + 1 && g_dl_starts == 1,
+          "duplicate foreground events neither repeat the notice nor restart the transfer");
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);
+    CHECK(g_dl_starts == 2 && g_dl_active, "retry explicitly starts a fresh transfer");
+    h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* cancellation also frees the screen safely */
+    CHECK(!g_dl_active && !g_timer, "Back cancels the transfer before freeing its screen");
+    timer_tick();
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* reopen the book */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);
+    h(EVT_BACKGROUND, 0, 0);            /* some firmware only sends background */
+    CHECK(!g_dl_active && !g_timer, "background alone also cancels the transfer");
+    messages = g_messages;
+    h(EVT_FOREGROUND, 0, 0);
+    CHECK(g_messages == messages + 1, "foreground alone delivers the interruption notice");
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);
+    g_dl_complete = 1;
+    timer_tick();
+    CHECK(!g_dl_active && !g_timer && strstr(g_message, "Saved to your library"),
+          "completed transfer restores the screen and shows success");
+
+    /* A failed timer step must restore the screen and permit an explicit retry. */
+    g_dl_complete = 0;
+    g_dl_error = 1;
+    messages = g_messages;
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);
+    CHECK(g_dl_active == 1 && g_timer, "error scenario begins with an active transfer");
+    timer_tick();
+    CHECK(!g_dl_active && !g_timer && !screen_has("Downloading..."),
+          "failed transfer stops its timer, releases the job and restores the screen");
+    CHECK(g_messages == messages + 1 && strstr(g_message, "Download failed:") &&
+          strstr(g_message, "stub download error"), "download error is shown to the user");
+    timer_tick();
+    CHECK(g_messages == messages + 1 && !g_timer && !g_dl_active,
+          "stopped error timer neither repeats the message nor restarts the transfer");
+    g_dl_error = 0;
+    int starts = g_dl_starts;
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);
+    CHECK(g_dl_starts == starts + 1 && g_dl_active == 1 && g_timer,
+          "explicit retry after an error starts one fresh transfer");
+    g_dl_complete = 1;
+    timer_tick();
+    CHECK(!g_dl_active && !g_timer && g_messages == messages + 2 &&
+          strstr(g_message, "Saved to your library"), "retry after an error completes successfully");
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* pop book detail */
     h(EVT_KEYPRESS, IV_KEY_BACK, 0);    /* pop results -> back at ROOT */
 
@@ -360,7 +438,16 @@ void InkViewMain(int (*h)(int, int, int))
     h(EVT_POINTERUP, 670, 36);          /* tap Exit (top-right corner) */
     CHECK(g_closeapp_calls == 1, "tapping Exit on the home screen closes the app");
 
+    /* Firmware can exit the app with a download still pending. */
+    h(EVT_KEYPRESS, IV_KEY_UP, 0);      /* home: select OPDS */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> catalog picker */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> root feed */
+    h(EVT_KEYPRESS, IV_KEY_DOWN, 0);
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);      /* -> book detail */
+    h(EVT_KEYPRESS, IV_KEY_OK, 0);
+    CHECK(g_dl_active && g_timer, "exit scenario begins with an active download");
     h(EVT_EXIT, 0, 0);
+    CHECK(!g_dl_active && !g_timer, "exit releases the download before closing the UI");
 
     if (g_fail) { printf("opds search scope: FAILED (%d)\n", g_fail); exit(1); }
     printf("opds search scope: all passed\n");
@@ -405,16 +492,30 @@ int httpd_local_ipv4(char *out, size_t outsz)
 
 #include "download.h"
 
-int download_book(const char *url, const char *title, const char *mime,
-                  dl_progress_cb cb, void *ud,
-                  char out_path[DL_PATH_MAX], char errbuf[DL_ERR_MAX])
+struct download_job { int pct; };
+download_job *download_start(const char *url, const char *title, const char *mime,
+                             char errbuf[DL_ERR_MAX])
 {
-    (void)url; (void)mime;
-    if (cb) { cb(50, ud); cb(100, ud); }
-    snprintf(out_path, DL_PATH_MAX, "/tmp/%s.epub", title ? title : "book");
+    (void)url; (void)title; (void)mime;
+    g_dl_starts++;
+    g_dl_active++;
     errbuf[0] = '\0';
-    return 0;
+    return calloc(1, sizeof(download_job));
 }
+int download_step(download_job *job, char out_path[DL_PATH_MAX], char errbuf[DL_ERR_MAX])
+{
+    job->pct = 50;
+    if (g_dl_error) {
+        out_path[0] = '\0';
+        snprintf(errbuf, DL_ERR_MAX, "stub download error");
+        return -1;
+    }
+    errbuf[0] = '\0';
+    snprintf(out_path, DL_PATH_MAX, "/tmp/book.epub");
+    return g_dl_complete ? 0 : 1;
+}
+int download_percent(const download_job *job) { return job->pct; }
+void download_destroy(download_job *job) { if (job) { g_dl_active--; free(job); } }
 
 
 /* ---- libcurl stubs ------------------------------------------------- */
@@ -457,8 +558,8 @@ CURLcode curl_easy_perform(CURL *c)
         feed = EMPTY_FEED;
         n = sizeof(EMPTY_FEED) - 1;
     }
-    if (s->write_cb)
-        s->write_cb((char *)feed, 1, n, s->write_data);
+    if (s->write_cb && s->write_cb((char *)feed, 1, n, s->write_data) != n)
+        return CURLE_WRITE_ERROR;
     return CURLE_OK;
 }
 

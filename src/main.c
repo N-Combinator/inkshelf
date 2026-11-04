@@ -41,8 +41,16 @@ static int inkshelf_handler(int type, int par1, int par2)
         return 1;
 
     case EVT_SHOW:
+    case EVT_FOREGROUND:
         nav_repaint();
         return 1;
+
+    case EVT_HIDE:
+    case EVT_BACKGROUND: {
+        screen_t *cur = nav_current();
+        if (cur && cur->on_suspend) cur->on_suspend(cur);
+        return 1;
+    }
 
     case EVT_KEYPRESS: {
         screen_t *cur = nav_current();
@@ -56,9 +64,12 @@ static int inkshelf_handler(int type, int par1, int par2)
         return 0;
     }
 
-    case EVT_EXIT:
+    case EVT_EXIT: {
+        screen_t *cur = nav_current();
+        if (cur && cur->on_suspend) cur->on_suspend(cur);
         ui_fonts_close();
         return 1;
+    }
 
     default:
         return 0;

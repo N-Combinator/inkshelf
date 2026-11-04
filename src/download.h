@@ -1,45 +1,29 @@
-/*
- * download.h — book file download to the device library.
- *
- * Writes the file to the device's Books folder via a libcurl transfer, with
- * a progress callback so the UI can show a percentage. The file is written
- * to a temp path first and renamed into place only on success, so a partial
- * download never appears in the library.
- *
- * After a successful save the function tells the firmware about the new file
- * with InkView's BookReady() and requests a background firmware library scan.
- * The save still succeeds if scanning fails; see inkshelf-library-scan.log.
+/* Book downloads are advanced by the UI timer, never by a blocking wait.
+ * All calls (including destruction and firmware notifications) stay on the
+ * InkView thread. Destroying an unfinished job cancels it and removes .part.
  */
-
 #ifndef INKSHELF_DOWNLOAD_H
 #define INKSHELF_DOWNLOAD_H
 
-#define DL_PATH_MAX  512
-#define DL_ERR_MAX   256
+#define DL_PATH_MAX 512
+#define DL_ERR_MAX 256
+#define DL_IDLE_TIMEOUT_SEC 60
 
-/*
- * Progress callback — called periodically during the download.
- * `pct` is 0–100; return non-zero to abort.
- */
-typedef int (*dl_progress_cb)(int pct, void *ud);
+typedef struct download_job download_job;
 
-/*
- * Download `url` and save it as a book file.
- *
- * `title`   — used to derive the filename (sanitised, truncated).
- * `mime`    — MIME type of the download link (e.g. "application/epub+zip").
- *             Used to pick the file extension.
- * `cb`/`ud` — progress callback + user data (both may be NULL).
- * `out_path`— on success, filled with the absolute path of the saved file.
- * `errbuf`  — on failure, filled with a human-readable message.
- *
- * Returns 0 on success, -1 on failure.
+/* Creates a job without waiting for WiFi or starting a blocking transfer.
+ * NULL on failure, with a message in errbuf. Inputs need not outlive this call.
  */
-int download_book(const char *url,
-                  const char *title,
-                  const char *mime,
-                  dl_progress_cb cb, void *ud,
-                  char out_path[DL_PATH_MAX],
+download_job *download_start(const char *url, const char *title, const char *mime,
+                             char errbuf[DL_ERR_MAX]);
+
+/* Advance available network work. Returns 1 while pending, 0 after saving the
+ * book, -1 on failure. Call only until it returns 0/-1, then destroy the job.
+ * out_path is populated only on success; errbuf only on failure.
+ */
+int download_step(download_job *job, char out_path[DL_PATH_MAX],
                   char errbuf[DL_ERR_MAX]);
+int download_percent(const download_job *job);
+void download_destroy(download_job *job);
 
-#endif /* INKSHELF_DOWNLOAD_H */
+#endif

@@ -22,6 +22,7 @@ typedef struct screen {
     void (*on_show)(struct screen *self);    /* repaint request */
     void (*on_leave)(struct screen *self);   /* hidden (child pushed) or about to be popped */
     void (*on_destroy)(struct screen *self); /* removed from the stack for good — free resources */
+    void (*on_suspend)(struct screen *self); /* app hidden/locked; must not block or draw */
 
     /* Return non-zero if the event was handled. */
     int (*on_key)(struct screen *self, int key);
