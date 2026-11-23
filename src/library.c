@@ -105,10 +105,24 @@ const char *library_ext_for(const char *mime, const char *url)
     return ".bin";
 }
 
-/* True for characters safe in FAT/ext4 filenames. */
+/* Byte length of the UTF-8 sequence starting with c; 1 for invalid leads. */
+static int utf8_seq_len(unsigned char c)
+{
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0) return 2;
+    if ((c & 0xF0) == 0xE0) return 3;
+    if ((c & 0xF8) == 0xF0) return 4;
+    return 1;
+}
+
+/* True for characters safe in FAT/ext4 filenames. Bytes >= 0x80 (non-ASCII,
+ * e.g. Cyrillic titles in UTF-8) are kept as-is: isalnum() is ASCII-only in
+ * the C locale, and rejecting them collapsed every Russian title into "_",
+ * trimmed to empty — so all downloads fell back to the same "book" name and
+ * overwrote each other. */
 static int name_char_ok(unsigned char c)
 {
-    return isalnum(c) || c == ' ' || c == '-' || c == '_' ||
+    return c >= 0x80 || isalnum(c) || c == ' ' || c == '-' || c == '_' ||
            c == '(' || c == ')' || c == '[' || c == ']' ||
            c == ',' || c == '.' || c == '\'' || c == '&' || c == '+';
 }
@@ -126,14 +140,19 @@ int library_build_filename(const char *title, const char *mime,
 
     size_t n = 0;
     int prev_us = 0;
-    for (const char *p = title ? title : ""; *p && n < cap; p++) {
+    for (const char *p = title ? title : ""; *p; ) {
         unsigned char c = (unsigned char)*p;
+        int len = utf8_seq_len(c);
+        /* Never split a multibyte character at the cap boundary. */
+        if (n + (size_t)len > cap) break;
         if (name_char_ok(c)) {
-            out[n++] = (char)c;
+            memcpy(out + n, p, (size_t)len);
+            n += (size_t)len;
             prev_us = 0;
         } else {
             if (!prev_us) { out[n++] = '_'; prev_us = 1; }
         }
+        p += len;
     }
     /* Trim trailing awkward chars (FAT-unfriendly). */
     while (n > 0 && (out[n-1] == ' ' || out[n-1] == '.' || out[n-1] == '_'))
